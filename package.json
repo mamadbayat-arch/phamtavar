@@ -1,0 +1,11 @@
+{
+  "name": "hamtavar-personal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

@@ -1,0 +1,14 @@
+apply plugin: 'com.android.application'
+android {
+ namespace 'ir.hamtavar.personal'
+ compileSdk 34
+ defaultConfig { applicationId 'ir.hamtavar.personal'; minSdk 23; targetSdk 34; versionCode 1; versionName '0.1' }
+ buildTypes { release { minifyEnabled false } }
+ sourceSets { main { assets.srcDir "$buildDir/generated/personalAssets" } }
+}
+tasks.register('syncPersonalWebAssets', Sync) {
+ from rootProject.file('../www')
+ into "$buildDir/generated/personalAssets/www"
+}
+tasks.named('preBuild').configure { dependsOn 'syncPersonalWebAssets' }
+dependencies { implementation 'androidx.webkit:webkit:1.9.0' }
