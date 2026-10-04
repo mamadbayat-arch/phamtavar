@@ -1,0 +1,6 @@
+{
+  "name": "همتوار شخصی | Hamtavar Personal",
+  "description": "اپلیکیشن مدیریت کارهای روزانه، ماتریس آیزنهاور، امور مالی و بودجه، پیگیری عادات و اهداف همتوار شخصی برای اندروید و وب",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

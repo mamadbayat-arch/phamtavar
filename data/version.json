@@ -1,0 +1,11 @@
+{
+  "version": "1.2.6",
+  "versionCode": 4,
+  "releaseDate": "۱۴۰۳/۰۷/۱۴",
+  "isMandatory": false,
+  "changelog": [
+    "بهبود سیستم به‌روزرسانی خودکار",
+    "افزایش سرعت هماهنگ‌سازی ابری"
+  ],
+  "apkUrl": "/hamtavar-personal-debug.apk"
+}
