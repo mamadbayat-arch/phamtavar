@@ -59,17 +59,20 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
       setIsDownloading(false);
       setIsDownloaded(true);
 
-      const downloadUrl = versionInfo.apkUrl || '/hamtavar-personal-debug.apk';
+      const defaultPublicApkUrl = 'https://github.com/mamadbayat-arch/phamtavar/raw/main/public/hamtavar-personal-debug.apk';
+      const downloadUrl = versionInfo.apkUrl && versionInfo.apkUrl.startsWith('http')
+        ? versionInfo.apkUrl
+        : defaultPublicApkUrl;
 
       // If running inside Android Native WebView Bridge
       if ((window as any).PersonalNative && typeof (window as any).PersonalNative.downloadAndInstallApk === 'function') {
-        const fullUrl = window.location.origin + downloadUrl;
-        (window as any).PersonalNative.downloadAndInstallApk(fullUrl);
+        (window as any).PersonalNative.downloadAndInstallApk(downloadUrl);
       } else {
         // Standard Web/Browser download
         const a = document.createElement('a');
         a.href = downloadUrl;
         a.download = 'hamtavar-personal-update.apk';
+        a.target = '_blank';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

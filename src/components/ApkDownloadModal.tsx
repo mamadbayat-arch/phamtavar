@@ -62,14 +62,27 @@ export const ApkDownloadModal: React.FC<ApkDownloadModalProps> = ({
             </div>
 
             {/* Direct Download Button */}
-            <a
-              href="/hamtavar-personal-debug.apk"
-              download="hamtavar-personal.apk"
-              className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-sm shadow-md transition-all"
-            >
-              <Download className="w-4 h-4" />
-              <span>دانلود مستقیم فایل APK (۱٫۵ مگابایت)</span>
-            </a>
+            <div className="space-y-2">
+              <a
+                href="https://github.com/mamadbayat-arch/phamtavar/raw/main/public/hamtavar-personal-debug.apk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-bold text-sm shadow-md transition-all"
+              >
+                <Download className="w-4 h-4" />
+                <span>دانلود مستقیم فایل APK (لینک عمومی و بدون محدودیت)</span>
+              </a>
+
+              <a
+                href="https://github.com/mamadbayat-arch/phamtavar/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors"
+              >
+                <ExternalLink className="w-3.5 h-3.5 text-slate-500" />
+                <span>مشاهده و دانلود از مخزن گیت‌هاب (GitHub Releases)</span>
+              </a>
+            </div>
 
             <p className="text-[11px] text-slate-400">
               بیلد شده با Android SDK 34 و کاملاً سازگار با اندروید ۶ تا ۱۴+

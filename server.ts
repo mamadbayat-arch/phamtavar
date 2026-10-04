@@ -63,7 +63,7 @@ const defaultVersion = {
     'تشخیص هوشمند و سریع پیامک‌های بانکی',
     'نسخه اختصاصی آیفون (iOS PWA)',
   ],
-  apkUrl: '/hamtavar-personal-debug.apk',
+  apkUrl: 'https://github.com/mamadbayat-arch/phamtavar/raw/main/public/hamtavar-personal-debug.apk',
   sftpServer: {
     ip: '87.107.5.187',
     port: 22,
