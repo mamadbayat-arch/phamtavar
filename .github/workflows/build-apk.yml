@@ -18,11 +18,12 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: stable debug keystore (same signature every build = in-place updates)
-        if: ${{ secrets.DEBUG_KEYSTORE_BASE64 != '' }}
+      - name: debug keystore (stable signature if secret set, else throwaway)
         run: |
           mkdir -p ~/.android
-          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+          fi
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
       - run: chmod +x gradlew
