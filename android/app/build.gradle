@@ -1,8 +1,10 @@
 apply plugin: 'com.android.application'
+def appVersionCode=(project.findProperty('appVersionCode')?:'1').toInteger()
+def appVersionName=project.findProperty('appVersionName')?:'0.1'
 android {
  namespace 'ir.hamtavar.personal'
  compileSdk 34
- defaultConfig { applicationId 'ir.hamtavar.personal'; minSdk 23; targetSdk 34; versionCode 1; versionName '0.1' }
+ defaultConfig { applicationId 'ir.hamtavar.personal'; minSdk 23; targetSdk 34; versionCode appVersionCode; versionName appVersionName }
  buildTypes { release { minifyEnabled false } }
  sourceSets { main { assets.srcDir "$buildDir/generated/personalAssets" } }
 }
