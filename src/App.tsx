@@ -11,7 +11,7 @@ import {
   Quadrant,
   BankAccount,
 } from './types';
-import { loadStoredState, saveStoredState } from './utils/storage';
+import { loadStoredState, saveStoredState, clearUserSession, getUserState, validateBackup } from './utils/storage';
 import { toJalali } from './utils/jalali';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
@@ -73,14 +73,60 @@ export default function App() {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
   const handleConfirmLogout = () => {
-    setState(prev => ({
-      ...prev,
-      userProfile: undefined,
-    }));
+    clearUserSession();
+    setState(prev => {
+      const updated = {
+        ...prev,
+        userProfile: undefined,
+      };
+      saveStoredState(updated);
+      return updated;
+    });
     recordBehavioralAction('app_launch', 'system', undefined, { action: 'logout' });
     setIsLogoutModalOpen(false);
-    showToast('با موفقیت از حساب کاربری خارج شدید.');
-    setIsLoginModalOpen(true);
+    showToast('با موفقیت از حساب کاربری خارج شدید. اکنون در حالت مهمان هستید.');
+  };
+
+  const handleLoginSuccess = async (profile: UserProfile) => {
+    const cleanMobile = profile.mobile.replace(/\D/g, '');
+    localStorage.setItem('hp_active_mobile', cleanMobile);
+
+    // 1. Check local partition first
+    const existingLocal = getUserState(cleanMobile);
+    if (existingLocal) {
+      existingLocal.userProfile = profile;
+      setState(existingLocal);
+      saveStoredState(existingLocal);
+      showToast(`خوش آمدید، ${profile.fullName}! اطلاعات شما بارگذاری شد.`);
+      setIsLoginModalOpen(false);
+      return;
+    }
+
+    // 2. Check cloud backup on server
+    try {
+      const res = await fetch(`/api/cloud/restore/${cleanMobile}`);
+      const data = await res.json();
+      if (data.success && data.backup?.state) {
+        const cloudState = validateBackup(data.backup.state);
+        cloudState.userProfile = profile;
+        setState(cloudState);
+        saveStoredState(cloudState);
+        showToast(`خوش آمدید، ${profile.fullName}! اطلاعات ابری شما بازیابی شد.`);
+        setIsLoginModalOpen(false);
+        return;
+      }
+    } catch (e) {
+      console.warn('Could not check cloud backup on login:', e);
+    }
+
+    // 3. New user or no prior cloud data: attach profile to state
+    setState(prev => {
+      const next = { ...prev, userProfile: profile };
+      saveStoredState(next);
+      return next;
+    });
+    showToast(`خوش آمدید، ${profile.fullName}! حساب شما فعال شد.`);
+    setIsLoginModalOpen(false);
   };
 
   // Auto-Update States
@@ -803,10 +849,13 @@ export default function App() {
       {/* Header */}
       <Header
         theme={theme}
+        isLoggedIn={!!state.userProfile?.isVerified}
+        userName={state.userProfile?.fullName}
         onToggleTheme={toggleTheme}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAdminPanel={openAdminPanel}
         onLogout={() => setIsLogoutModalOpen(true)}
+        onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
       {/* Ad & Announcement Banner */}
@@ -918,6 +967,7 @@ export default function App() {
         onOpenAdminPanel={openAdminPanel}
         onCheckUpdate={() => setIsUpdateModalOpen(true)}
         onLogout={() => setIsLogoutModalOpen(true)}
+        onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
       {/* APK Download & Info Modal */}
@@ -957,11 +1007,7 @@ export default function App() {
       {/* Login / First Launch OTP Verification */}
       <LoginModal
         isOpen={isLoginModalOpen}
-        onSuccess={profile => {
-          setState(prev => ({ ...prev, userProfile: profile }));
-          setIsLoginModalOpen(false);
-          showToast(`خوش آمدید، ${profile.fullName}!`);
-        }}
+        onSuccess={handleLoginSuccess}
         onSkip={() => setIsLoginModalOpen(false)}
       />
 

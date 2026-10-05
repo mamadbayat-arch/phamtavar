@@ -24,6 +24,7 @@ declare global {
 
 const STORAGE_KEY = 'hp_state';
 const LEGACY_KEY = 'personal';
+const ACTIVE_USER_MOBILE_KEY = 'hp_active_mobile';
 
 export const getInitialSampleState = (): AppState => {
   const today = getTodayKey();
@@ -305,9 +306,37 @@ export const validateBackup = (d: any): AppState => {
   };
 };
 
+export const clearUserSession = (): void => {
+  try {
+    localStorage.removeItem(ACTIVE_USER_MOBILE_KEY);
+    localStorage.removeItem('hp_state_guest');
+    sessionStorage.removeItem('hp_session');
+  } catch {}
+};
+
+export const getUserState = (mobile: string): AppState | null => {
+  try {
+    const clean = mobile.replace(/\D/g, '');
+    const raw = localStorage.getItem(`hp_state_${clean}`);
+    if (raw && raw.trim().length > 2) {
+      return validateBackup(JSON.parse(raw));
+    }
+  } catch {}
+  return null;
+};
+
 export const loadStoredState = (): AppState => {
   try {
-    // 1. Try Android Native Bridge
+    // 1. Check if there's an active logged-in user mobile
+    const activeMobile = localStorage.getItem(ACTIVE_USER_MOBILE_KEY);
+    if (activeMobile) {
+      const userRaw = localStorage.getItem(`hp_state_${activeMobile}`);
+      if (userRaw && userRaw.trim().length > 2) {
+        return validateBackup(JSON.parse(userRaw));
+      }
+    }
+
+    // 2. Try Android Native Bridge
     if (window.PersonalNative && typeof window.PersonalNative.readState === 'function') {
       const nativeRaw = window.PersonalNative.readState();
       if (nativeRaw && nativeRaw.trim().length > 2) {
@@ -315,7 +344,12 @@ export const loadStoredState = (): AppState => {
       }
     }
 
-    // 2. Try localStorage
+    // 3. Try guest state or localStorage
+    const guestRaw = localStorage.getItem('hp_state_guest');
+    if (guestRaw && guestRaw.trim().length > 2) {
+      return validateBackup(JSON.parse(guestRaw));
+    }
+
     const localRaw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY);
     if (localRaw && localRaw.trim().length > 2) {
       return validateBackup(JSON.parse(localRaw));
@@ -324,7 +358,7 @@ export const loadStoredState = (): AppState => {
     console.warn('Failed to load stored state:', err);
   }
 
-  // 3. Fallback to Initial Sample State for immediate enjoyable testing
+  // 4. Fallback to Initial Sample State
   const initial = getInitialSampleState();
   saveStoredState(initial);
   return initial;
@@ -334,11 +368,22 @@ export const saveStoredState = (state: AppState): boolean => {
   try {
     const raw = JSON.stringify(state);
 
-    // Save to localStorage
+    // 1. If user is logged in with verified mobile, store to their user-specific partition
+    if (state.userProfile?.isVerified && state.userProfile?.mobile) {
+      const cleanMobile = state.userProfile.mobile.replace(/\D/g, '');
+      localStorage.setItem(`hp_state_${cleanMobile}`, raw);
+      localStorage.setItem(ACTIVE_USER_MOBILE_KEY, cleanMobile);
+    } else {
+      // Guest or logged-out mode
+      localStorage.setItem('hp_state_guest', raw);
+      localStorage.removeItem(ACTIVE_USER_MOBILE_KEY);
+    }
+
+    // 2. Save active state to primary key for fallback/backwards-compatibility
     localStorage.setItem(STORAGE_KEY, raw);
     localStorage.setItem(LEGACY_KEY, raw);
 
-    // Save to Android Native SharedPreferences if running in WebView
+    // 3. Save to Android Native SharedPreferences if running in WebView
     if (window.PersonalNative && typeof window.PersonalNative.writeState === 'function') {
       window.PersonalNative.writeState(raw);
     }

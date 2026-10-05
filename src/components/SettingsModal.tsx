@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Apple,
   LogOut,
+  LogIn,
 } from 'lucide-react';
 import { AppState } from '../types';
 import { exportJsonBackup, importJsonBackup, getInitialSampleState } from '../utils/storage';
@@ -27,6 +28,7 @@ interface SettingsModalProps {
   onOpenAdminPanel: () => void;
   onCheckUpdate?: () => void;
   onLogout?: () => void;
+  onOpenLogin?: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -40,6 +42,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onOpenIosModal,
   onOpenAdminPanel,
   onCheckUpdate,
+  onLogout,
+  onOpenLogin,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -249,27 +253,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {/* User Account & Logout */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          {/* User Account & Login / Logout */}
+          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3">
             <div>
               <p className="font-bold text-slate-800 dark:text-slate-200 text-xs">
-                {state.userProfile?.fullName || 'کاربر گرامی'} {state.userProfile?.mobile ? `(${state.userProfile.mobile})` : ''}
+                {state.userProfile?.isVerified
+                  ? `${state.userProfile?.fullName || 'کاربر گرامی'} (${state.userProfile?.mobile})`
+                  : 'کاربر مهمان (حالت آفلاین)'}
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                {state.userProfile?.isVerified ? 'حساب کاربری فعال و هماهنگ با سرور' : 'ورود به عنوان کاربر مهمان'}
+                {state.userProfile?.isVerified
+                  ? 'حساب کاربری فعال و هماهنگ با سرور ابری همتوار'
+                  : 'اطلاعات در این دستگاه ذخیره می‌شود. جهت پشتیبان ابری وارد شوید.'}
               </p>
             </div>
-            {onLogout && (
-              <button
-                onClick={() => {
-                  onClose();
-                  onLogout();
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 font-bold text-xs active:scale-95 transition-all"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span>خروج از حساب</span>
-              </button>
+            {state.userProfile?.isVerified ? (
+              onLogout && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onLogout();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-800/80 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 font-bold text-xs active:scale-95 transition-all flex-shrink-0"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>خروج از حساب</span>
+                </button>
+              )
+            ) : (
+              onOpenLogin && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs active:scale-95 transition-all flex-shrink-0 shadow-xs"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>ورود / ثبت‌نام</span>
+                </button>
+              )
             )}
           </div>
 

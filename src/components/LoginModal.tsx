@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, User, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, RefreshCw, KeyRound, AlertCircle } from 'lucide-react';
+import { Smartphone, User, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, RefreshCw, KeyRound, AlertCircle, X } from 'lucide-react';
 import { UserProfile } from '../types';
 import { HamtavarLogo } from './HamtavarLogo';
 
@@ -19,6 +19,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess, onSki
   const [infoMsg, setInfoMsg] = useState('');
   const [fallbackCode, setFallbackCode] = useState<string | null>(null);
   const [timer, setTimer] = useState(120);
+
+  useEffect(() => {
+    if (isOpen) {
+      setStep('info');
+      setOtpCode('');
+      setErrorMsg('');
+      setInfoMsg('');
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     let interval: any;
@@ -140,7 +149,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess, onSki
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden p-6 sm:p-7 space-y-5">
+      <div className="relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden p-6 sm:p-7 space-y-5">
+        {/* Optional Close Button */}
+        {onSkip && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className="absolute top-4 left-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="بستن پنجره ورود"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
           <div className="p-3 bg-emerald-500/10 rounded-2xl">

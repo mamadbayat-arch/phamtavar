@@ -1,22 +1,28 @@
 import React from 'react';
-import { Moon, Sun, Settings, Megaphone, LogOut } from 'lucide-react';
+import { Moon, Sun, Settings, Megaphone, LogOut, LogIn } from 'lucide-react';
 import { formatJalaliLong, getTodayKey } from '../utils/jalali';
 import { HamtavarLogo } from './HamtavarLogo';
 
 interface HeaderProps {
   theme: 'light' | 'dark';
+  isLoggedIn?: boolean;
+  userName?: string;
   onToggleTheme: () => void;
   onOpenSettings: () => void;
   onOpenAdminPanel: () => void;
   onLogout: () => void;
+  onOpenLogin: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   theme,
+  isLoggedIn = false,
+  userName,
   onToggleTheme,
   onOpenSettings,
   onOpenAdminPanel,
   onLogout,
+  onOpenLogin,
 }) => {
   const todayStr = formatJalaliLong(getTodayKey());
 
@@ -27,7 +33,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-3">
           <div className="relative group flex-shrink-0">
             <HamtavarLogo size={38} />
-            <div className="absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full" />
+            <div
+              className={`absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 border-2 border-white dark:border-slate-900 rounded-full ${
+                isLoggedIn ? 'bg-emerald-500' : 'bg-amber-400'
+              }`}
+              title={isLoggedIn ? 'متصل به حساب کاربری' : 'حالت آفلاین (مهمان)'}
+            />
           </div>
 
           <div>
@@ -35,8 +46,14 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-bold text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight leading-none">
                 همتوار
               </span>
-              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
-                شخصی
+              <span
+                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                  isLoggedIn
+                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
+                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                }`}
+              >
+                {isLoggedIn ? (userName ? userName.split(' ')[0] : 'شخصی') : 'مهمان'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 leading-none">
@@ -81,16 +98,28 @@ export const Header: React.FC<HeaderProps> = ({
             <Settings className="w-4 h-4" />
           </button>
 
-          {/* Logout (خروج از حساب / خروج از برنامه) */}
-          <button
-            onClick={onLogout}
-            className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 text-xs font-bold shadow-2xs"
-            aria-label="خروج از حساب"
-            title="خروج از حساب کاربری"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="hidden sm:inline">خروج</span>
-          </button>
+          {/* Auth Button (ورود یا خروج هوشمند بر اساس وضعیت لاگین) */}
+          {isLoggedIn ? (
+            <button
+              onClick={onLogout}
+              className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60 active:scale-95 transition-all flex items-center justify-center gap-1.5 text-xs font-bold shadow-2xs"
+              aria-label="خروج از حساب"
+              title={userName ? `خروج از حساب ${userName}` : 'خروج از حساب کاربری'}
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">خروج</span>
+            </button>
+          ) : (
+            <button
+              onClick={onOpenLogin}
+              className="h-9 sm:h-10 px-2.5 sm:px-3 rounded-xl border border-emerald-500 bg-emerald-600 hover:bg-emerald-700 text-white active:scale-95 transition-all flex items-center justify-center gap-1.5 text-xs font-bold shadow-xs"
+              aria-label="ورود به حساب کاربری"
+              title="ورود به حساب کاربری یا ثبت‌نام"
+            >
+              <LogIn className="w-4 h-4" />
+              <span className="hidden sm:inline">ورود</span>
+            </button>
+          )}
         </div>
       </div>
     </header>
