@@ -84,7 +84,8 @@ export default function App() {
     });
     recordBehavioralAction('app_launch', 'system', undefined, { action: 'logout' });
     setIsLogoutModalOpen(false);
-    showToast('با موفقیت از حساب کاربری خارج شدید. اکنون در حالت مهمان هستید.');
+    setIsLoginModalOpen(true);
+    showToast('از حساب کاربری خارج شدید. برای دسترسی به برنامه، لطفاً مجدداً با کد پیامکی وارد شوید.');
   };
 
   const handleLoginSuccess = async (profile: UserProfile) => {
@@ -162,12 +163,12 @@ export default function App() {
     setIsUpdateModalOpen(false);
   };
 
-  // Show login modal on first launch if not yet verified
+  // Mandatory SMS verification: If user is not verified, always show LoginModal
   useEffect(() => {
     if (!state.userProfile || !state.userProfile.isVerified) {
       setIsLoginModalOpen(true);
     }
-  }, []);
+  }, [state.userProfile]);
 
   // Listen for /admin, #admin, or ?admin in URL address bar
   useEffect(() => {
@@ -1004,11 +1005,10 @@ export default function App() {
         currentVersionCode={CURRENT_APP_VERSION_CODE}
       />
 
-      {/* Login / First Launch OTP Verification */}
+      {/* Login / Mandatory SMS OTP Verification */}
       <LoginModal
-        isOpen={isLoginModalOpen}
+        isOpen={isLoginModalOpen || !state.userProfile?.isVerified}
         onSuccess={handleLoginSuccess}
-        onSkip={() => setIsLoginModalOpen(false)}
       />
 
       {/* Bank SMS Modal */}

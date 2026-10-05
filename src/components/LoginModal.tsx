@@ -1,15 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, User, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, RefreshCw, KeyRound, AlertCircle, X } from 'lucide-react';
+import { Smartphone, User, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, RefreshCw, KeyRound, AlertCircle } from 'lucide-react';
 import { UserProfile } from '../types';
 import { HamtavarLogo } from './HamtavarLogo';
 
 interface LoginModalProps {
   isOpen: boolean;
   onSuccess: (profile: UserProfile) => void;
-  onSkip?: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess, onSkip }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => {
   const [step, setStep] = useState<'info' | 'otp'>('info');
   const [fullName, setFullName] = useState('');
   const [mobile, setMobile] = useState('');
@@ -148,30 +147,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess, onSki
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden p-6 sm:p-7 space-y-5">
-        {/* Optional Close Button */}
-        {onSkip && (
-          <button
-            type="button"
-            onClick={onSkip}
-            className="absolute top-4 left-4 p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="بستن پنجره ورود"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        )}
-
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
           <div className="p-3 bg-emerald-500/10 rounded-2xl">
             <HamtavarLogo size={52} />
           </div>
           <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
-            به همتوار شخصی خوش آمدید
+            ورود به سامانه همتوار شخصی
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
-            مدیریت هوشمند کارهای روزانه، ماتریس آیزنهاور، امور مالی و بودجه، عادات و اهداف
+            جهت حفظ امنیت و دسترسی به اطلاعات شخصی، ورود فقط با شماره موبایل و کد تایید پیامکی امکان‌پذیر است.
           </p>
         </div>
 
@@ -260,16 +247,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess, onSki
                   </>
                 )}
               </button>
-
-              {onSkip && (
-                <button
-                  type="button"
-                  onClick={onSkip}
-                  className="w-full py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                >
-                  ورود موقت به عنوان مهمان (بعداً ثبت می‌کنم)
-                </button>
-              )}
             </div>
           </form>
         )}

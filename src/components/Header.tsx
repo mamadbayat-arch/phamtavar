@@ -34,10 +34,8 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative group flex-shrink-0">
             <HamtavarLogo size={38} />
             <div
-              className={`absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 border-2 border-white dark:border-slate-900 rounded-full ${
-                isLoggedIn ? 'bg-emerald-500' : 'bg-amber-400'
-              }`}
-              title={isLoggedIn ? 'متصل به حساب کاربری' : 'حالت آفلاین (مهمان)'}
+              className="absolute -bottom-0.5 -left-0.5 w-2.5 h-2.5 border-2 border-white dark:border-slate-900 rounded-full bg-emerald-500"
+              title="متصل به حساب کاربری پیامکی"
             />
           </div>
 
@@ -46,14 +44,8 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-bold text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight leading-none">
                 همتوار
               </span>
-              <span
-                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-                  isLoggedIn
-                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300'
-                    : 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
-                }`}
-              >
-                {isLoggedIn ? (userName ? userName.split(' ')[0] : 'شخصی') : 'مهمان'}
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                {userName ? userName.split(' ')[0] : 'شخصی'}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-0.5 leading-none">
