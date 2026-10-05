@@ -17,10 +17,14 @@ import {
 import { Money, Installment, Cheque, BankAccount } from '../types';
 import {
   formatToman,
+  formatAmount,
   formatJalaliShort,
   getTodayKey,
   daysDiff,
   toPersianDigits,
+  getJalaliDay,
+  getJalaliMonthKey,
+  formatJMonthKey,
 } from '../utils/jalali';
 
 interface FinanceViewProps {
@@ -71,25 +75,26 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
   const [tab, setTab] = useState<FinanceTab>('transactions');
   const todayStr = getTodayKey();
 
-  // Financial calculations
-  const totalIncome = money
-    .filter(m => m.kind === 'income')
-    .reduce((sum, m) => sum + m.amount, 0);
+  // Totals are for the current Jalali month, matching the monthly budget.
+  const currentJMonth = getJalaliMonthKey(todayStr);
+  const monthMoney = money.filter(m => m.date && getJalaliMonthKey(m.date) === currentJMonth);
+  const sumOf = (items: Money[], kind: Money['kind']) =>
+    items.filter(m => m.kind === kind).reduce((sum, m) => sum + (Number(m.amount) || 0), 0);
 
-  const totalExpense = money
-    .filter(m => m.kind === 'expense')
-    .reduce((sum, m) => sum + m.amount, 0);
-
+  const totalIncome = sumOf(monthMoney, 'income');
+  const totalExpense = sumOf(monthMoney, 'expense');
   const balance = totalIncome - totalExpense;
 
-  const budgetUsagePercent = budget > 0 ? Math.min(100, Math.round((totalExpense / budget) * 100)) : 0;
+  const budgetUsagePercent = budget > 0 ? Math.round((totalExpense / budget) * 100) : 0;
   const isOverBudget = budget > 0 && totalExpense > budget;
 
-  // Alerts for cheques and installments
+  const sortedMoney = [...money].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  // Alerts for cheques and installments (instalment due days are Jalali days of the month)
+  const todayJDay = getJalaliDay(todayStr);
   const dueCheques = cheques.filter(c => !c.cashed && daysDiff(c.date, todayStr) <= 3);
   const dueInstallments = installments.filter(inst => {
-    const [y, m, d] = todayStr.split('-').map(Number);
-    const daysLeft = inst.dueDay - d;
+    const daysLeft = inst.dueDay - todayJDay;
     return inst.remaining > 0 && daysLeft >= 0 && daysLeft <= 3;
   });
 
@@ -135,7 +140,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
 
       {/* Bank Accounts & Cards Bar */}
       <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
@@ -168,6 +173,11 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
 
         {/* Horizontal bank cards */}
         <div className="flex gap-2.5 overflow-x-auto pb-1 scrollbar-none">
+          {bankAccounts.length === 0 && (
+            <p className="text-[11px] text-slate-400 py-2">
+              هنوز حسابی ثبت نشده است. از «مدیریت بانک‌ها» اولین حساب را اضافه کنید.
+            </p>
+          )}
           {bankAccounts.map(b => {
             const diff =
               b.lastBankSmsBalance !== undefined ? b.lastBankSmsBalance - b.currentBalance : 0;
@@ -176,7 +186,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
               <div
                 key={b.id}
                 onClick={onOpenSmsModal}
-                className="flex-shrink-0 min-w-[155px] p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-850/70 hover:border-emerald-500/50 cursor-pointer transition-all shadow-xs"
+                className="flex-shrink-0 min-w-[155px] p-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/40 hover:border-emerald-500/50 cursor-pointer transition-all shadow-xs"
               >
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
@@ -191,7 +201,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                     <span className="w-2 h-2 rounded-full bg-emerald-500" title="تراز با بانک" />
                   )}
                 </div>
-                <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100 whitespace-nowrap">
                   {formatToman(b.currentBalance)}
                 </p>
                 <p className="text-[10px] text-slate-400 mt-0.5">
@@ -223,7 +233,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                   </span>
                   <button
                     onClick={() => onToggleCheque(c.id)}
-                    className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                    className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap flex-shrink-0"
                   >
                     پاس شد
                   </button>
@@ -238,7 +248,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                 </span>
                 <button
                   onClick={() => onPayInstallment(inst.id)}
-                  className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap flex-shrink-0"
                 >
                   ثبت پرداخت
                 </button>
@@ -249,51 +259,55 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
       )}
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-3 gap-2">
         {/* Income */}
-        <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+        <div className="bg-white dark:bg-slate-800 px-1.5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center min-w-0">
           <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 mb-1">
             <ArrowDownLeft className="w-3.5 h-3.5" />
-            <span>کل دریافتی</span>
+            <span>دریافتی ماه</span>
           </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-            {formatToman(totalIncome)}
+          <p className="text-[13px] sm:text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+            {formatAmount(totalIncome)}
           </p>
+          <p className="text-[10px] text-slate-400">تومان</p>
         </div>
 
         {/* Expense */}
-        <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+        <div className="bg-white dark:bg-slate-800 px-1.5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center min-w-0">
           <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 mb-1">
             <ArrowUpRight className="w-3.5 h-3.5" />
-            <span>کل هزینه‌ها</span>
+            <span>هزینه ماه</span>
           </div>
-          <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
-            {formatToman(totalExpense)}
+          <p className="text-[13px] sm:text-sm font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">
+            {formatAmount(totalExpense)}
           </p>
+          <p className="text-[10px] text-slate-400">تومان</p>
         </div>
 
         {/* Balance */}
-        <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center">
+        <div className="bg-white dark:bg-slate-800 px-1.5 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm text-center min-w-0">
           <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-slate-500 dark:text-slate-400 mb-1">
             <Wallet className="w-3.5 h-3.5 text-blue-500" />
-            <span>تراز مالی</span>
+            <span>تراز ماه</span>
           </div>
           <p
-            className={`text-sm font-bold truncate ${
+            className={`text-[13px] sm:text-sm font-bold whitespace-nowrap ${
               balance >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
             }`}
+            dir="ltr"
           >
-            {formatToman(balance)}
+            {formatAmount(balance)}
           </p>
+          <p className="text-[10px] text-slate-400">تومان</p>
         </div>
       </div>
 
       {/* Budget Meter */}
       <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <div>
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100">
-              بودجه ماهانه
+              بودجه {formatJMonthKey(currentJMonth)}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               {budget > 0
@@ -303,7 +317,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
           </div>
           <button
             onClick={onOpenBudgetModal}
-            className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 font-semibold"
+            className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 font-semibold whitespace-nowrap flex-shrink-0"
           >
             <Sliders className="w-3 h-3" />
             <span>تنظیم بودجه</span>
@@ -311,7 +325,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
         </div>
 
         {budget > 0 && (
-          <div className="w-full bg-slate-100 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
+          <div
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.min(100, budgetUsagePercent)}
+            aria-label="میزان مصرف بودجه"
+            className="w-full bg-slate-100 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden"
+          >
             <div
               className={`h-full rounded-full transition-all duration-500 ${
                 isOverBudget ? 'bg-rose-500' : budgetUsagePercent > 80 ? 'bg-amber-500' : 'bg-emerald-500'
@@ -348,7 +369,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
         {tab === 'transactions' && (
           <button
             onClick={onOpenNewMoneyModal}
-            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
+            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none whitespace-nowrap flex-shrink-0"
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="leading-none">ثبت تراکنش</span>
@@ -357,7 +378,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
         {tab === 'installments' && (
           <button
             onClick={onOpenNewInstallmentModal}
-            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
+            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none whitespace-nowrap flex-shrink-0"
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="leading-none">قسط جدید</span>
@@ -366,7 +387,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
         {tab === 'cheques' && (
           <button
             onClick={onOpenNewChequeModal}
-            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
+            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none whitespace-nowrap flex-shrink-0"
           >
             <Plus className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="leading-none">چک جدید</span>
@@ -382,14 +403,14 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
               هنوز هیچ تراکنشی ثبت نکرده‌اید.
             </div>
           ) : (
-            money.map(item => (
+            sortedMoney.map(item => (
               <div
                 key={item.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm"
+                className="flex items-center justify-between gap-2 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm"
               >
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                   <div
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
                       item.kind === 'income'
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
                         : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'
@@ -402,8 +423,8 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                     )}
                   </div>
 
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
                       {item.title}
                     </h3>
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
@@ -414,9 +435,9 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 flex-shrink-0">
                   <span
-                    className={`text-sm font-bold ${
+                    className={`text-sm font-bold whitespace-nowrap ${
                       item.kind === 'income'
                         ? 'text-emerald-600 dark:text-emerald-400'
                         : 'text-rose-600 dark:text-rose-400'
@@ -428,13 +449,15 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                   <div className="flex items-center gap-0.5">
                     <button
                       onClick={() => onEditMoney(item)}
-                      className="p-1 text-slate-400 hover:text-slate-600"
+                      aria-label="ویرایش"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => onDeleteMoney(item.id)}
-                      className="p-1 text-slate-400 hover:text-rose-500"
+                      onClick={() => confirm(`تراکنش «${item.title}» حذف شود؟`) && onDeleteMoney(item.id)}
+                      aria-label="حذف"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -490,13 +513,15 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => onEditInstallment(inst)}
-                      className="p-1 text-slate-400 hover:text-slate-600"
+                      aria-label="ویرایش"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => onDeleteInstallment(inst.id)}
-                      className="p-1 text-slate-400 hover:text-rose-500"
+                      onClick={() => confirm(`قسط «${inst.title}» حذف شود؟`) && onDeleteInstallment(inst.id)}
+                      aria-label="حذف"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -523,7 +548,7 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                   key={c.id}
                   className={`p-3.5 rounded-xl border shadow-sm transition-all ${
                     c.cashed
-                      ? 'bg-slate-50 dark:bg-slate-850/40 border-slate-200 dark:border-slate-800 opacity-70'
+                      ? 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-800 opacity-70'
                       : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
                   }`}
                 >
@@ -576,13 +601,15 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
                   <div className="flex justify-end gap-1 pt-2 border-t border-slate-100 dark:border-slate-700 mt-2">
                     <button
                       onClick={() => onEditCheque(c)}
-                      className="p-1 text-slate-400 hover:text-slate-600"
+                      aria-label="ویرایش"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => onDeleteCheque(c.id)}
-                      className="p-1 text-slate-400 hover:text-rose-500"
+                      onClick={() => confirm(`چک «${c.title}» حذف شود؟`) && onDeleteCheque(c.id)}
+                      aria-label="حذف"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

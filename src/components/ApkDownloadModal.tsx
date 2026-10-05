@@ -8,6 +8,7 @@ import {
   Cpu,
   CheckCircle,
   FileCheck,
+  ExternalLink,
 } from 'lucide-react';
 
 interface ApkDownloadModalProps {

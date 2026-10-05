@@ -31,6 +31,9 @@ import {
   formatBehavioralLogsAsJsonL,
   AITrainingSample,
 } from '../utils/aiDataset';
+import { ApiError, apiJson, downloadFromApi, postJson } from '../utils/api';
+import { toJalali, getTodayKey, toPersianDigits } from '../utils/jalali';
+import { CURRENT_APP_VERSION } from '../types';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
@@ -49,7 +52,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   userProfile,
   onOpenUpdateModal,
 }) => {
-  const [activeTab, setActiveTab] = useState<'ads' | 'server' | 'cloud' | 'ai'>('ads');
+  const [activeTab, setActiveTab] = useState<'ads' | 'server' | 'ai'>('ads');
 
   // AI Dataset & Learning State
   const [aiStats, setAiStats] = useState<any>(null);
@@ -87,62 +90,48 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const [isUploadingSftp, setIsUploadingSftp] = useState(false);
   const [sftpStatus, setSftpStatus] = useState<string | null>(null);
 
-  // Cloud Sync State
-  const [cloudMobile, setCloudMobile] = useState(userProfile?.mobile || '');
-  const [isCloudSyncing, setIsCloudSyncing] = useState(false);
-  const [cloudStatus, setCloudStatus] = useState<string | null>(null);
+  // Cloud backup lives in Settings now; every user manages only their own.
 
   useEffect(() => {
     if (isOpen) {
-      // Load current ads
-      fetch('/api/ads')
-        .then(res => res.json())
+      apiJson('/api/ads')
         .then(data => {
-          if (data.success && data.ads) {
-            setAdConfig(data.ads);
-          }
+          if (data.ads) setAdConfig(data.ads);
         })
         .catch(() => {});
-
-      // Load version info
       checkServerVersion();
-
-      // Load AI stats
       fetchAiStats();
     }
   }, [isOpen]);
 
+  const errorText = (err: unknown) => (err as ApiError)?.message || 'خطا در ارتباط با سرور';
+
   const fetchAiStats = async () => {
     try {
-      const res = await fetch('/api/ai/stats');
-      const data = await res.json();
-      if (data.success) {
-        setAiStats(data);
-      }
-    } catch (e) {}
+      setAiStats(await apiJson('/api/ai/stats'));
+    } catch {}
   };
 
   const handleSyncAiDatasetToServer = async () => {
     setIsSyncingAi(true);
     setAiSyncStatus(null);
     try {
-      const samples = extractAiTrainingSamples(state);
-      const res = await fetch('/api/ai/sample', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ samples }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAiSyncStatus(`✅ ${data.message}`);
-        fetchAiStats();
-      } else {
-        setAiSyncStatus(`❌ ${data.message}`);
-      }
-    } catch (err: any) {
-      setAiSyncStatus(`❌ خطا در اتصال به سرور: ${err.message}`);
+      const data = await postJson('/api/ai/sample', { samples: extractAiTrainingSamples(state) });
+      setAiSyncStatus(`✅ ${data.message}`);
+      fetchAiStats();
+    } catch (err) {
+      setAiSyncStatus(`❌ ${errorText(err)}`);
     } finally {
       setIsSyncingAi(false);
+    }
+  };
+
+  const handleDownloadServerDataset = async () => {
+    setAiSyncStatus(null);
+    try {
+      await downloadFromApi('/api/ai/dataset', 'hamtavar-ai-training-dataset.jsonl');
+    } catch (err) {
+      setAiSyncStatus(`❌ ${errorText(err)}`);
     }
   };
 
@@ -153,20 +142,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setIsSavingAd(true);
     setAdSaveStatus(null);
     try {
-      const res = await fetch('/api/ads', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(adConfig),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAdSaveStatus('تبلیغات با موفقیت ذخیره و در نرم‌افزار فعال شد.');
-        setTimeout(() => setAdSaveStatus(null), 3000);
-      } else {
-        setAdSaveStatus(`خطا: ${data.message}`);
-      }
-    } catch (err: any) {
-      setAdSaveStatus(`خطا در ارتباط با سرور: ${err.message}`);
+      const data = await postJson('/api/ads', adConfig);
+      if (data.ads) setAdConfig(data.ads);
+      setAdSaveStatus('بنر ذخیره شد و برای کاربران نمایش داده می‌شود.');
+      setTimeout(() => setAdSaveStatus(null), 3000);
+    } catch (err) {
+      setAdSaveStatus(`خطا: ${errorText(err)}`);
     } finally {
       setIsSavingAd(false);
     }
@@ -175,24 +156,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   const checkServerVersion = async () => {
     setIsCheckingVersion(true);
     try {
-      const res = await fetch('/api/app/version');
-      const data = await res.json();
+      const data = await apiJson('/api/app/version');
       setServerVersionInfo(data);
       if (data.version) {
         setEditVersion(data.version);
-        setEditVersionCode(data.versionCode || 3);
+        setEditVersionCode(data.versionCode || 1);
         setEditMandatory(!!data.isMandatory);
-        if (data.changelog && Array.isArray(data.changelog)) {
-          setEditChangelog(data.changelog.join('\n'));
-        }
+        if (Array.isArray(data.changelog)) setEditChangelog(data.changelog.join('\n'));
       }
-    } catch (err) {
-      setServerVersionInfo({
-        version: '1.2.0',
-        versionCode: 2,
-        releaseDate: '۱۴۰۳/۰۷/۱۳',
-        offline: true,
-      });
+    } catch {
+      setServerVersionInfo(null);
     } finally {
       setIsCheckingVersion(false);
     }
@@ -203,130 +176,48 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
     setIsSavingVersion(true);
     setVersionSaveStatus(null);
     try {
-      const payload = {
+      const data = await postJson('/api/app/version', {
         version: editVersion.trim(),
         versionCode: Number(editVersionCode),
-        releaseDate: '۱۴۰۳/۰۷/۱۴',
+        releaseDate: toPersianDigits(toJalali(getTodayKey())),
         isMandatory: editMandatory,
         changelog: editChangelog
           .split('\n')
           .map(l => l.trim())
           .filter(Boolean),
-        apkUrl: '/hamtavar-personal-debug.apk',
-        sftpServer: {
-          ip: '87.107.5.187',
-          port: 22,
-          username: 'hamtavar-personal',
-          targetFolder: '/همتوار شخصی',
-        },
-      };
-
-      const res = await fetch('/api/app/version', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        // Keep whatever download address the server already publishes.
+        apkUrl: serverVersionInfo?.apkUrl,
       });
-      const data = await res.json();
-      if (data.success) {
-        setServerVersionInfo(payload);
-        setVersionSaveStatus('نسخه جدید در سرور ثبت شد. اکنون کاربران پیام اتوآپدیت دریافت می‌کنند.');
-        setIsEditingVersion(false);
-        setTimeout(() => setVersionSaveStatus(null), 4000);
-      } else {
-        setVersionSaveStatus(`خطا: ${data.message}`);
-      }
-    } catch (err: any) {
-      setVersionSaveStatus(`خطا در ارتباط با سرور: ${err.message}`);
+      setServerVersionInfo(data.version);
+      setVersionSaveStatus('نسخه جدید ثبت شد. کاربران نسخه‌های قدیمی‌تر پیام به‌روزرسانی می‌بینند.');
+      setIsEditingVersion(false);
+      setTimeout(() => setVersionSaveStatus(null), 4000);
+    } catch (err) {
+      setVersionSaveStatus(`خطا: ${errorText(err)}`);
     } finally {
       setIsSavingVersion(false);
     }
   };
 
-  const handleCloudSync = async () => {
-    const cleanMobile = (cloudMobile || userProfile?.mobile || '').trim();
-    if (!cleanMobile) {
-      setCloudStatus('لطفاً شماره موبایل خود را مشخص کنید.');
-      return;
-    }
-
-    setIsCloudSyncing(true);
-    setCloudStatus(null);
-    try {
-      const res = await fetch('/api/cloud/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mobile: cleanMobile,
-          state,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setCloudStatus('✅ اطلاعات شما با موفقیت در فضای ابری سرور همگام‌سازی شد.');
-      } else {
-        setCloudStatus(`❌ خطا در ذخیره ابری: ${data.message}`);
-      }
-    } catch (err: any) {
-      setCloudStatus('❌ عدم امکان برقراری ارتباط با سرور ابری.');
-    } finally {
-      setIsCloudSyncing(false);
-    }
-  };
-
-  const handleCloudRestore = async () => {
-    const cleanMobile = (cloudMobile || userProfile?.mobile || '').trim();
-    if (!cleanMobile) {
-      setCloudStatus('لطفاً شماره موبایل خود را برای بازیابی وارد کنید.');
-      return;
-    }
-
-    if (!confirm('آیا مایلید اطلاعات فعلی با آخرین نسخه پشتیبان ابری این شماره جایگزین شود؟')) {
-      return;
-    }
-
-    setIsCloudSyncing(true);
-    setCloudStatus(null);
-    try {
-      const res = await fetch(`/api/cloud/restore/${cleanMobile}`);
-      const data = await res.json();
-      if (data.success && data.backup && data.backup.state) {
-        onRestoreState(data.backup.state);
-        setCloudStatus('✅ اطلاعات با موفقیت از سرور ابری بازیابی و اعمال شد.');
-      } else {
-        setCloudStatus(`❌ ${data.message || 'پشتیبانی در سرور یافت نشد.'}`);
-      }
-    } catch (err: any) {
-      setCloudStatus('❌ خطا در ارتباط با سرور ابری.');
-    } finally {
-      setIsCloudSyncing(false);
-    }
-  };
-
   const handleSftpUpload = async () => {
     if (!privateKey.trim() && !sftpPassword.trim()) {
-      setSftpStatus('لطفاً محتوای کلید خصوصی (Private Key) یا رمز عبور سرور را وارد کنید.');
+      setSftpStatus('کلید خصوصی یا رمز عبور سرور را وارد کنید.');
       return;
     }
 
     setIsUploadingSftp(true);
-    setSftpStatus('در حال اتصال به 87.107.5.187:22 و آپلود در پوشه /همتوار شخصی...');
+    setSftpStatus('در حال اتصال به سرور دانلود و بارگذاری فایل...');
     try {
-      const res = await fetch('/api/server/sftp-upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          privateKeyText: privateKey.trim(),
-          password: sftpPassword.trim(),
-        }),
+      const data = await postJson('/api/server/sftp-upload', {
+        privateKeyText: privateKey.trim(),
+        password: sftpPassword,
       });
-      const data = await res.json();
-      if (data.success) {
-        setSftpStatus(`✅ ${data.message}`);
-      } else {
-        setSftpStatus(`❌ ${data.message}`);
-      }
-    } catch (err: any) {
-      setSftpStatus(`❌ خطا در ارتباط با سرور: ${err.message}`);
+      setSftpStatus(`✅ ${data.message}`);
+      // Credentials are single-use here; do not keep them in memory.
+      setPrivateKey('');
+      setSftpPassword('');
+    } catch (err) {
+      setSftpStatus(`❌ ${errorText(err)}`);
     } finally {
       setIsUploadingSftp(false);
     }
@@ -343,27 +234,28 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                پنل مدیریت تبلیغات، سرور و ابر همتوار
+                پنل مدیریت همتوار
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                تنظیم تبلیغات، استعلام نسخه و انتقال به سرور 87.107.5.187
+                بنر اطلاع‌رسانی، نسخه برنامه و دیتاست
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+            aria-label="بستن"
+            className="w-9 h-9 flex items-center justify-center rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/50 px-4">
+        <div className="flex overflow-x-auto scrollbar-none border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 px-2 sm:px-4">
           <button
             onClick={() => setActiveTab('ads')}
-            className={`flex items-center gap-2 py-3 px-4 border-b-2 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 py-3 px-3 sm:px-4 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
               activeTab === 'ads'
                 ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -375,7 +267,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
           <button
             onClick={() => setActiveTab('server')}
-            className={`flex items-center gap-2 py-3 px-4 border-b-2 text-xs font-bold transition-all ${
+            className={`flex items-center gap-2 py-3 px-3 sm:px-4 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
               activeTab === 'server'
                 ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
@@ -383,18 +275,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           >
             <Server className="w-4 h-4" />
             <span>سرور و SFTP دانلود</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('cloud')}
-            className={`flex items-center gap-2 py-3 px-3 sm:px-4 border-b-2 text-xs font-bold transition-all whitespace-nowrap ${
-              activeTab === 'cloud'
-                ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                : 'border-transparent text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-            }`}
-          >
-            <Cloud className="w-4 h-4" />
-            <span>همگام‌سازی ابری</span>
           </button>
 
           <button
@@ -552,40 +432,6 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           {/* TAB 2: SERVER & SFTP */}
           {activeTab === 'server' && (
             <div className="space-y-4">
-              {/* Server Info Card */}
-              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Server className="w-4 h-4 text-emerald-600" />
-                    <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                      مشخصات سرور هدف (دانلود و استقرار)
-                    </span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-[10px] font-bold">
-                    آنلاین (Port 22 Open)
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-600 dark:text-slate-300 font-mono" dir="ltr">
-                  <div className="p-2 rounded-xl bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600">
-                    <span className="text-slate-400 block text-[10px]">HOST / IP:</span>
-                    <strong>87.107.5.187</strong>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600">
-                    <span className="text-slate-400 block text-[10px]">PORT:</span>
-                    <strong>22 (SFTP / SSH)</strong>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600">
-                    <span className="text-slate-400 block text-[10px]">USER:</span>
-                    <strong>hamtavar-personal</strong>
-                  </div>
-                  <div className="p-2 rounded-xl bg-white dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600">
-                    <span className="text-slate-400 block text-[10px]">FOLDER:</span>
-                    <strong>/همتوار شخصی</strong>
-                  </div>
-                </div>
-              </div>
-
               {/* Version Check & Auto-Update Configuration */}
               <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-3">
                 <div className="flex items-center justify-between">
@@ -593,7 +439,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     <Smartphone className="w-4 h-4 text-emerald-600" />
                     <div>
                       <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                        سیستم اتوآپدیت (نسخه کلاینت: ۱.۲.۰ | سرور: {serverVersionInfo?.version || '۱.۲.۵'})
+                        به‌روزرسانی خودکار (این نسخه: {CURRENT_APP_VERSION} | سرور: {serverVersionInfo?.version || 'نامشخص'})
                       </span>
                       <p className="text-[10px] text-slate-400">
                         کاربرانی که نسخه پایین‌تر دارند به صورت خودکار پیام به‌روزرسانی دریافت می‌کنند.
@@ -618,7 +464,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           versionCode: editVersionCode,
                           isMandatory: editMandatory,
                           changelog: editChangelog.split('\n').filter(Boolean),
-                          apkUrl: '/hamtavar-personal-debug.apk',
+                          apkUrl: '',
                         })}
                         className="px-2.5 py-1.5 rounded-xl border border-slate-300 dark:border-slate-600 hover:bg-white dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] font-bold transition-colors"
                         title="مشاهده مستقیم پاپ‌آپ به‌روزرسانی همان‌طور که کاربر می‌بیند"
@@ -714,7 +560,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1">
                     <Key className="w-3.5 h-3.5 text-amber-500" />
-                    <span>کلید خصوصی سرور (Private Key) یا رمز عبور hamtavar-personal:</span>
+                    <span>کلید خصوصی (Private Key) یا رمز عبور کاربر SFTP:</span>
                   </label>
                   <textarea
                     rows={3}
@@ -757,83 +603,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   ) : (
                     <>
                       <Upload className="w-4 h-4" />
-                      <span>ارسال فایل جدید APK به سرور 87.107.5.187</span>
+                      <span>ارسال فایل APK به سرور دانلود</span>
                     </>
                   )}
                 </button>
 
-                {/* Direct CLI fallback snippet */}
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <span className="text-[10px] font-bold text-slate-400 block mb-1">
-                    یا اجرای مستقیم از طریق ترمینال لینوکس/مک:
-                  </span>
-                  <div className="p-2 rounded-xl bg-slate-900 text-emerald-400 font-mono text-[10px] select-all overflow-x-auto text-left" dir="ltr">
-                    scp -P 22 -i hamtavar-personal-final.key hamtavar-personal-debug.apk hamtavar-personal@87.107.5.187:"/همتوار شخصی/"
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: CLOUD SYNC & BACKUP */}
-          {activeTab === 'cloud' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 space-y-1.5">
-                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
-                  <Cloud className="w-4 h-4 text-emerald-600" />
-                  <span>پشتیبان‌گیری ابری و جلوگیری از حذف اطلاعات</span>
-                </div>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
-                  اگر گوشی شما گم شود، به سرقت برود یا دستگاه جدیدی خریداری کنید، با وارد کردن شماره همراه خود می‌توانید تمامی کارها، امور مالی، چک‌ها و عادات ثبت‌شده را مجدداً بازیابی نمایید.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  شماره موبایل جهت همگام‌سازی ابری:
-                </label>
-                <input
-                  type="tel"
-                  value={cloudMobile}
-                  onChange={e => setCloudMobile(e.target.value)}
-                  placeholder="۰۹۱۲۳۴۵۶۷۸۹"
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-mono text-left focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  dir="ltr"
-                />
-              </div>
-
-              {cloudStatus && (
-                <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                  {cloudStatus}
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={handleCloudSync}
-                  disabled={isCloudSyncing}
-                  className="py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Upload className="w-4 h-4" />
-                  <span>پشتیبان‌گیری روی سرور</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCloudRestore}
-                  disabled={isCloudSyncing}
-                  className="py-3 px-3 rounded-xl bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Download className="w-4 h-4 text-blue-600" />
-                  <span>بازیابی از سرور</span>
-                </button>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 text-[11px] flex items-start gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0 mt-0.5" />
-                <p>
-                  اطلاعات به صورت کدگذاری شده در مسیر اختصاصی سرور ذخیره می‌شود و تنها با شماره موبایل ثبت‌شده قابل دسترسی است.
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  نشانی سرور مقصد در تنظیمات سرور (SFTP_HOST، SFTP_USERNAME، SFTP_REMOTE_DIR) تعریف می‌شود. کلید یا رمز فقط برای همین انتقال استفاده و ذخیره نمی‌شود.
                 </p>
               </div>
             </div>
@@ -957,17 +733,17 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                           دانلود تجمیعی کل نمونه‌های سرور:
                         </span>
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          مسیر مستقیم API برای آموزش مدل‌های پایتون: /api/ai/dataset
+                          همه نمونه‌های تجمیع‌شده در سرور، در قالب JSONL
                         </p>
                       </div>
-                      <a
-                        href="/api/ai/dataset"
-                        download="hamtavar-ai-training-dataset.jsonl"
+                      <button
+                        type="button"
+                        onClick={handleDownloadServerDataset}
                         className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>دانلود کل سرور</span>
-                      </a>
+                      </button>
                     </div>
                   </div>
                 );

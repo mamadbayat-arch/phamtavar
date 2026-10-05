@@ -25,7 +25,10 @@ import {
   formatJalaliLong,
   getJalaliWeekDayIndex,
   getFullWeekDayName,
+  getDatesOfJalaliMonth,
+  formatJMonthKey,
 } from '../utils/jalali';
+import { calculateCurrentStreak } from '../utils/behaviorLogger';
 
 interface HabitsViewProps {
   habits: Habit[];
@@ -56,27 +59,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
   // Selected date inside the open habit calendar
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
 
-  const calculateStreak = (habit: Habit): number => {
-    let streak = 0;
-    let checkDate = today;
-
-    if (habit.logs.includes(today)) {
-      streak++;
-      checkDate = moveDay(today, -1);
-    } else {
-      checkDate = moveDay(today, -1);
-      if (!habit.logs.includes(checkDate)) {
-        return 0;
-      }
-    }
-
-    while (habit.logs.includes(checkDate)) {
-      streak++;
-      checkDate = moveDay(checkDate, -1);
-    }
-
-    return streak;
-  };
+  const calculateStreak = (habit: Habit): number => calculateCurrentStreak(habit.logs);
 
   const getFrequencyLabel = (days: number[]) => {
     if (days.length === 7) return 'هر روز';
@@ -96,20 +79,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
     }
   };
 
-  // Find dates in this Jalali month
-  const getDatesForJMonth = (jMonth: string) => {
-    const dates: string[] = [];
-    let cur = moveDay(today, -70);
-    for (let i = 0; i < 160; i++) {
-      if (toJalali(cur).startsWith(jMonth)) {
-        dates.push(cur);
-      }
-      cur = moveDay(cur, 1);
-    }
-    return dates;
-  };
-
-  const monthDates = getDatesForJMonth(activeJMonth);
+  const monthDates = getDatesOfJalaliMonth(activeJMonth);
 
   return (
     <div className="space-y-4">
@@ -127,7 +97,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
 
         <button
           onClick={onOpenNewHabitModal}
-          className="flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
+          className="flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none whitespace-nowrap flex-shrink-0"
         >
           <Plus className="w-4 h-4 flex-shrink-0" />
           <span className="leading-none">عادت جدید</span>
@@ -158,9 +128,9 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                 {/* Habit Card Header */}
                 <div
                   onClick={() => toggleExpandHabit(habit.id)}
-                  className="p-4 cursor-pointer flex items-start justify-between gap-3 hover:bg-slate-50/50 dark:hover:bg-slate-750/30 transition-colors"
+                  className="p-4 cursor-pointer flex flex-wrap items-start justify-between gap-x-3 gap-y-2.5 hover:bg-slate-50/50 dark:hover:bg-slate-700/20 transition-colors"
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-start gap-3 min-w-0 flex-1 basis-56">
                     {/* Checkbox for today */}
                     <button
                       onClick={e => {
@@ -168,7 +138,9 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                         onToggleHabitLog(habit.id, today);
                       }}
                       className="mt-0.5 text-emerald-600 dark:text-emerald-400 hover:scale-110 active:scale-95 transition-transform flex-shrink-0"
-                      title={isDoneToday ? 'علامت انجام شده امروز' : 'ثبت انجام برای امروز'}
+                      title={isDoneToday ? 'امروز انجام شده' : 'ثبت انجام برای امروز'}
+                      aria-label={isDoneToday ? 'لغو انجام امروز' : 'ثبت انجام برای امروز'}
+                      aria-pressed={isDoneToday}
                     >
                       {isDoneToday ? (
                         <CheckCircle2 className="w-6 h-6 fill-emerald-100 dark:fill-emerald-950" />
@@ -192,7 +164,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 flex-shrink-0 mr-auto">
                     {/* Convert All Button - With Clear Persian Text */}
                     <button
                       onClick={e => {
@@ -236,6 +208,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                       }}
                       className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
                       title="ویرایش"
+                      aria-label="ویرایش عادت"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
@@ -244,10 +217,11 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                     <button
                       onClick={e => {
                         e.stopPropagation();
-                        onDeleteHabit(habit.id);
+                        if (confirm(`عادت «${habit.title}» و سوابق آن حذف شود؟`)) onDeleteHabit(habit.id);
                       }}
                       className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
                       title="حذف"
+                      aria-label="حذف عادت"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -261,7 +235,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
-                          تقویم {toPersianDigits(activeJMonth)}
+                          {formatJMonthKey(activeJMonth)}
                         </span>
                         <span className="text-[10px] text-slate-400">
                           ({toPersianDigits(
@@ -275,6 +249,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                           onClick={() => setActiveJMonth(prev => shiftJMonth(prev, -1))}
                           className="p-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700"
                           title="ماه قبل"
+                          aria-label="ماه قبل"
                         >
                           <ChevronRight className="w-3 h-3" />
                         </button>
@@ -288,6 +263,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                           onClick={() => setActiveJMonth(prev => shiftJMonth(prev, 1))}
                           className="p-1 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700"
                           title="ماه بعد"
+                          aria-label="ماه بعد"
                         >
                           <ChevronLeft className="w-3 h-3" />
                         </button>
@@ -341,7 +317,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                             }`}
                             title={`${dayName} ${toJalali(dStr)}`}
                           >
-                            <span>{toPersianDigits(jDay)}</span>
+                            <span>{toPersianDigits(Number(jDay))}</span>
                             {isLogged && (
                               <Check className="w-2 h-2 mx-auto mt-0.5 stroke-[3] text-emerald-100" />
                             )}
@@ -355,7 +331,7 @@ export const HabitsView: React.FC<HabitsViewProps> = ({
                       <div className="mt-3 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm space-y-2 animate-in fade-in duration-150">
                         <div className="flex items-center justify-between">
                           <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
-                            عملیات برای {getFullWeekDayName(selectedCalDay)} {formatJalaliLong(selectedCalDay)}:
+                            {formatJalaliLong(selectedCalDay)}
                           </span>
                           <span className="text-[11px] text-slate-400">
                             {habit.logs.includes(selectedCalDay) ? 'وضعیت: انجام‌شده' : 'وضعیت: ثبت‌نشده'}

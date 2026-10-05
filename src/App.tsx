@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   AppState,
   AppView,
@@ -11,8 +11,17 @@ import {
   Quadrant,
   BankAccount,
 } from './types';
-import { loadStoredState, saveStoredState, clearUserSession, getUserState, validateBackup } from './utils/storage';
-import { toJalali } from './utils/jalali';
+import {
+  loadStoredState,
+  saveStoredState,
+  clearUserSession,
+  getUserState,
+  validateBackup,
+  getEmptyState,
+  getInitialSampleState,
+} from './utils/storage';
+import { apiJson, getToken, hasServer, setToken } from './utils/api';
+import { toJalali, getTodayKey } from './utils/jalali';
 import { Header } from './components/Header';
 import { Navigation } from './components/Navigation';
 import { TasksView } from './components/TasksView';
@@ -69,66 +78,81 @@ export default function App() {
   const [isApkModalOpen, setIsApkModalOpen] = useState(false);
   const [isIosModalOpen, setIsIosModalOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
 
+  // With a server, the app is only usable after SMS login. The Android build
+  // without a configured server keeps everything on the device instead.
+  const requiresLogin = hasServer();
+  const isLoggedIn = !!state.userProfile?.isVerified;
+  const isAdmin = isLoggedIn && !!state.userProfile?.isAdmin;
+
   const handleConfirmLogout = () => {
+    // The effect below has already saved this user's data to their own partition.
+    setToken(null);
     clearUserSession();
-    setState(prev => {
-      const updated = {
-        ...prev,
-        userProfile: undefined,
-      };
-      saveStoredState(updated);
-      return updated;
-    });
-    recordBehavioralAction('app_launch', 'system', undefined, { action: 'logout' });
+    setState(getEmptyState());
     setIsLogoutModalOpen(false);
-    setIsLoginModalOpen(true);
-    showToast('از حساب کاربری خارج شدید. برای دسترسی به برنامه، لطفاً مجدداً با کد پیامکی وارد شوید.');
+    setIsAdminPanelOpen(false);
+    setCurrentView('tasks');
+    showToast('از حساب کاربری خارج شدید.');
   };
 
   const handleLoginSuccess = async (profile: UserProfile) => {
     const cleanMobile = profile.mobile.replace(/\D/g, '');
-    localStorage.setItem('hp_active_mobile', cleanMobile);
 
-    // 1. Check local partition first
+    // 1. This device already holds this user's data.
     const existingLocal = getUserState(cleanMobile);
     if (existingLocal) {
-      existingLocal.userProfile = profile;
-      setState(existingLocal);
-      saveStoredState(existingLocal);
+      setState({ ...existingLocal, userProfile: profile });
       showToast(`خوش آمدید، ${profile.fullName}! اطلاعات شما بارگذاری شد.`);
-      setIsLoginModalOpen(false);
       return;
     }
 
-    // 2. Check cloud backup on server
+    // 2. Otherwise look for their cloud backup.
     try {
-      const res = await fetch(`/api/cloud/restore/${cleanMobile}`);
-      const data = await res.json();
-      if (data.success && data.backup?.state) {
-        const cloudState = validateBackup(data.backup.state);
-        cloudState.userProfile = profile;
-        setState(cloudState);
-        saveStoredState(cloudState);
+      const data = await apiJson('/api/cloud/restore');
+      if (data.backup?.state) {
+        setState({ ...validateBackup(data.backup.state), userProfile: profile });
         showToast(`خوش آمدید، ${profile.fullName}! اطلاعات ابری شما بازیابی شد.`);
-        setIsLoginModalOpen(false);
         return;
       }
-    } catch (e) {
-      console.warn('Could not check cloud backup on login:', e);
+    } catch {
+      // Offline or server error: fall through to a fresh account.
     }
 
-    // 3. New user or no prior cloud data: attach profile to state
-    setState(prev => {
-      const next = { ...prev, userProfile: profile };
-      saveStoredState(next);
-      return next;
-    });
+    // 3. Brand-new account. Never inherit whatever the previous user left in memory.
+    setState({ ...getInitialSampleState(), userProfile: profile });
     showToast(`خوش آمدید، ${profile.fullName}! حساب شما فعال شد.`);
-    setIsLoginModalOpen(false);
   };
+
+  // Replaces the data but keeps the signed-in identity, so a backup file made
+  // by someone else can never switch this device to their account.
+  const applyRestoredState = (incoming: unknown) => {
+    setState(prev => ({ ...validateBackup(incoming), userProfile: prev.userProfile }));
+  };
+
+  // Refresh the profile (name, admin flag) and drop the session if the server rejects the token.
+  useEffect(() => {
+    if (!requiresLogin || !isLoggedIn) return;
+    if (!getToken()) {
+      // Signed in by an older build that had no server session.
+      clearUserSession();
+      setState(getEmptyState());
+      return;
+    }
+    apiJson('/api/auth/me')
+      .then(data => {
+        if (data.user) setState(prev => (prev.userProfile ? { ...prev, userProfile: { ...prev.userProfile, ...data.user } } : prev));
+      })
+      .catch(err => {
+        if (err?.status === 401) {
+          clearUserSession();
+          setState(getEmptyState());
+          showToast('نشست شما منقضی شده است. لطفاً دوباره وارد شوید.');
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Auto-Update States
   const [serverVersionInfo, setServerVersionInfo] = useState<AppVersionInfo | null>(null);
@@ -136,17 +160,13 @@ export default function App() {
 
   // Check version on launch for Auto-Update
   useEffect(() => {
-    fetch('/api/app/version')
-      .then(res => res.json())
-      .then((data: AppVersionInfo) => {
+    if (!hasServer()) return;
+    apiJson<AppVersionInfo>('/api/app/version')
+      .then(data => {
         if (!data || !data.version) return;
         setServerVersionInfo(data);
 
-        const serverCode = data.versionCode || 0;
-        const isNewerCode = serverCode > CURRENT_APP_VERSION_CODE;
-        const isNewerVersion = data.version !== CURRENT_APP_VERSION;
-
-        if (isNewerCode || isNewerVersion) {
+        if ((data.versionCode || 0) > CURRENT_APP_VERSION_CODE) {
           const dismissedVersion = sessionStorage.getItem('dismissed_update_version');
           if (data.isMandatory || dismissedVersion !== data.version) {
             setIsUpdateModalOpen(true);
@@ -163,22 +183,16 @@ export default function App() {
     setIsUpdateModalOpen(false);
   };
 
-  // Mandatory SMS verification: If user is not verified, always show LoginModal
-  useEffect(() => {
-    if (!state.userProfile || !state.userProfile.isVerified) {
-      setIsLoginModalOpen(true);
-    }
-  }, [state.userProfile]);
-
-  // Listen for /admin, #admin, or ?admin in URL address bar
+  // Open the admin panel from /admin, #admin or ?admin, for admins only.
+  const isAdminRef = useRef(isAdmin);
+  isAdminRef.current = isAdmin;
   useEffect(() => {
     const handleUrlRoute = () => {
       const path = window.location.pathname.toLowerCase();
       const hash = window.location.hash.toLowerCase();
       const search = new URLSearchParams(window.location.search);
-      if (path === '/admin' || hash === '#admin' || hash === '#/admin' || search.has('admin')) {
-        setIsAdminPanelOpen(true);
-      }
+      const wantsAdmin = path === '/admin' || hash === '#admin' || hash === '#/admin' || search.has('admin');
+      if (wantsAdmin && isAdminRef.current) setIsAdminPanelOpen(true);
     };
 
     handleUrlRoute();
@@ -188,9 +202,10 @@ export default function App() {
       window.removeEventListener('popstate', handleUrlRoute);
       window.removeEventListener('hashchange', handleUrlRoute);
     };
-  }, []);
+  }, [isAdmin]);
 
   const openAdminPanel = () => {
+    if (!isAdmin) return;
     try {
       window.history.pushState(null, '', '#admin');
     } catch (e) {}
@@ -214,11 +229,11 @@ export default function App() {
   // Toast notice
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  const toastTimer = useRef<number | undefined>(undefined);
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => {
-      setToastMessage(prev => (prev === msg ? null : prev));
-    }, 3500);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToastMessage(null), 3500);
   };
 
   // Sync theme to document element
@@ -243,8 +258,9 @@ export default function App() {
   useEffect(() => {
     window.receiveBackup = (jsonString: string) => {
       try {
-        const parsed = JSON.parse(jsonString);
-        setState(parsed);
+        const parsed = validateBackup(JSON.parse(jsonString));
+        if (!confirm('اطلاعات فعلی با این فایل پشتیبان جایگزین شود؟')) return;
+        applyRestoredState(parsed);
         showToast('پشتیبان با موفقیت بازیابی شد.');
       } catch (err: any) {
         showToast(`خطا در خواندن فایل: ${err?.message || ''}`);
@@ -262,6 +278,10 @@ export default function App() {
     };
 
     window.handleBack = () => {
+      if (isLogoutModalOpen) {
+        setIsLogoutModalOpen(false);
+        return true;
+      }
       if (isBankSmsModalOpen) {
         setIsBankSmsModalOpen(false);
         return true;
@@ -294,10 +314,6 @@ export default function App() {
         setIsAdminPanelOpen(false);
         return true;
       }
-      if (isLoginModalOpen) {
-        setIsLoginModalOpen(false);
-        return true;
-      }
       if (currentView !== 'tasks') {
         setCurrentView('tasks');
         return true;
@@ -317,6 +333,11 @@ export default function App() {
     isApkModalOpen,
     isBankSmsModalOpen,
     isBankAccountsModalOpen,
+    isIosModalOpen,
+    isUpdateModalOpen,
+    isAdminPanelOpen,
+    isLogoutModalOpen,
+    serverVersionInfo,
     currentView,
   ]);
 
@@ -436,16 +457,30 @@ export default function App() {
   };
 
   const handlePayInstallment = (instId: string) => {
+    const inst = state.installments.find(i => i.id === instId);
+    if (!inst || inst.remaining <= 0) return;
+
+    // Paying an instalment is real money leaving: record it so the budget stays honest.
+    const payment = enrichMoneyWithMl(
+      {
+        id: crypto.randomUUID(),
+        title: `قسط ${inst.title}`,
+        amount: inst.amount,
+        kind: 'expense',
+        category: 'سایر',
+        date: getTodayKey(),
+      },
+      true
+    );
+    recordBehavioralAction('installment_pay', 'installment', instId, { amount: inst.amount });
     setState(prev => ({
       ...prev,
-      installments: prev.installments.map(inst => {
-        if (inst.id === instId && inst.remaining > 0) {
-          return { ...inst, remaining: inst.remaining - 1 };
-        }
-        return inst;
-      }),
+      installments: prev.installments.map(i =>
+        i.id === instId && i.remaining > 0 ? { ...i, remaining: i.remaining - 1 } : i
+      ),
+      money: [payment, ...prev.money],
     }));
-    showToast('یک قسط به عنوان پرداخت‌شده ثبت شد.');
+    showToast('پرداخت قسط ثبت و به هزینه‌ها اضافه شد.');
   };
 
   const handleDeleteInstallment = (id: string) => {
@@ -472,7 +507,9 @@ export default function App() {
   const handleToggleCheque = (chqId: string) => {
     setState(prev => ({
       ...prev,
-      cheques: prev.cheques.map(c => (c.id === chqId ? { ...c, cashed: !c.cashed } : c)),
+      cheques: prev.cheques.map(c =>
+        c.id === chqId ? { ...c, cashed: !c.cashed, cashedAt: !c.cashed ? new Date().toISOString() : undefined } : c
+      ),
     }));
   };
 
@@ -671,11 +708,12 @@ export default function App() {
 
   const handleUpdateGoalProgress = (goalId: string, delta: number) => {
     setState(prev => {
-      let updatedGoal: Goal | null = null;
+      let progress: number | undefined;
       const updatedGoals = prev.goals.map(g => {
         if (g.id !== goalId) return g;
         const nextVal = Math.max(0, g.current + delta);
-        updatedGoal = enrichGoalWithMl({ ...g, current: nextVal });
+        const updatedGoal = enrichGoalWithMl({ ...g, current: nextVal });
+        progress = updatedGoal.progressPercentage;
         return updatedGoal;
       });
 
@@ -683,7 +721,7 @@ export default function App() {
         'goal_progress_update',
         'goal',
         goalId,
-        { delta, progress: updatedGoal?.progressPercentage },
+        { delta, progress },
         currentView
       );
       sendActionLogToBackend(log);
@@ -794,10 +832,10 @@ export default function App() {
         const existingIdx = prev.installments.findIndex(i => i.id === id);
         if (existingIdx !== -1) {
           const updated = [...prev.installments];
-          updated[existingIdx] = { ...data, id, createdAt: new Date().toISOString() };
+          updated[existingIdx] = { ...prev.installments[existingIdx], ...data, id };
           return { ...prev, installments: updated };
         }
-        return { ...prev, installments: [...prev.installments, { ...data, id, createdAt: new Date().toISOString() }] };
+        return { ...prev, installments: [...prev.installments, { ...data, id, createdAt: new Date().toISOString(), createdTimestamp: Date.now() }] };
       });
       showToast('قسط ذخیره شد.');
     } else if (kind === 'cheque') {
@@ -806,10 +844,10 @@ export default function App() {
         const existingIdx = prev.cheques.findIndex(c => c.id === id);
         if (existingIdx !== -1) {
           const updated = [...prev.cheques];
-          updated[existingIdx] = { ...data, id, createdAt: new Date().toISOString() };
+          updated[existingIdx] = { ...prev.cheques[existingIdx], ...data, id };
           return { ...prev, cheques: updated };
         }
-        return { ...prev, cheques: [...prev.cheques, { ...data, id, createdAt: new Date().toISOString() }] };
+        return { ...prev, cheques: [...prev.cheques, { ...data, id, createdAt: new Date().toISOString(), createdTimestamp: Date.now() }] };
       });
       showToast('چک ذخیره شد.');
     } else if (kind === 'budget') {
@@ -817,10 +855,7 @@ export default function App() {
       showToast('سقف بودجه ماهانه به‌روزرسانی شد.');
     } else if (kind === 'fromHabit') {
       if (Array.isArray(data.tasks)) {
-        const newTasksWithIds = data.tasks.map((t: any) => ({
-          ...t,
-          id: crypto.randomUUID(),
-        }));
+        const newTasksWithIds = data.tasks.map((t: any) => enrichTaskWithMl({ ...t, id: crypto.randomUUID() }, true));
         setState(prev => ({ ...prev, tasks: [...newTasksWithIds, ...prev.tasks] }));
         showToast(`${newTasksWithIds.length} کار از روی عادت ساخته و به فهرست اضافه شد.`);
       }
@@ -850,17 +885,17 @@ export default function App() {
       {/* Header */}
       <Header
         theme={theme}
-        isLoggedIn={!!state.userProfile?.isVerified}
+        isLoggedIn={isLoggedIn}
+        isAdmin={isAdmin}
         userName={state.userProfile?.fullName}
         onToggleTheme={toggleTheme}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenAdminPanel={openAdminPanel}
         onLogout={() => setIsLogoutModalOpen(true)}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
       {/* Ad & Announcement Banner */}
-      <AdBanner onOpenAdminPanel={openAdminPanel} />
+      <AdBanner />
 
       {/* Main View Area */}
       <main className="flex-1 max-w-2xl w-full mx-auto p-4 sm:p-6 pb-24">
@@ -937,7 +972,7 @@ export default function App() {
       {/* Toast Notice */}
       {toastMessage && (
         <div className="fixed bottom-20 inset-x-4 z-40 max-w-sm mx-auto flex items-center justify-center pointer-events-none">
-          <div className="bg-slate-900/90 dark:bg-slate-100/95 text-white dark:text-slate-900 text-xs font-semibold py-2.5 px-4 rounded-xl shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom duration-200">
+          <div role="status" aria-live="polite" className="bg-slate-900/90 dark:bg-slate-100/95 text-white dark:text-slate-900 text-xs font-semibold py-2.5 px-4 rounded-xl shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom duration-200">
             {toastMessage}
           </div>
         </div>
@@ -962,13 +997,13 @@ export default function App() {
         state={state}
         onClose={() => setIsSettingsOpen(false)}
         onToggleTheme={toggleTheme}
-        onStateRestored={setState}
-        onOpenApkModal={() => setIsApkModalOpen(true)}
-        onOpenIosModal={() => setIsIosModalOpen(true)}
+        isLoggedIn={isLoggedIn}
+        isAdmin={isAdmin}
+        onStateRestored={applyRestoredState}
+        onNotify={showToast}
         onOpenAdminPanel={openAdminPanel}
         onCheckUpdate={() => setIsUpdateModalOpen(true)}
         onLogout={() => setIsLogoutModalOpen(true)}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
       {/* APK Download & Info Modal */}
@@ -985,10 +1020,10 @@ export default function App() {
 
       {/* Admin Panel (Ads, Server, Cloud Sync, SFTP, Auto-Update) */}
       <AdminPanelModal
-        isOpen={isAdminPanelOpen}
+        isOpen={isAdminPanelOpen && isAdmin}
         onClose={closeAdminPanel}
         state={state}
-        onRestoreState={setState}
+        onRestoreState={applyRestoredState}
         userProfile={state.userProfile}
         onOpenUpdateModal={vInfo => {
           if (vInfo) setServerVersionInfo(vInfo);
@@ -1007,7 +1042,7 @@ export default function App() {
 
       {/* Login / Mandatory SMS OTP Verification */}
       <LoginModal
-        isOpen={isLoginModalOpen || !state.userProfile?.isVerified}
+        isOpen={requiresLogin && !isLoggedIn}
         onSuccess={handleLoginSuccess}
       />
 

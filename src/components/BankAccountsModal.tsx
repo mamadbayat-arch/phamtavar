@@ -264,7 +264,7 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => onDeleteBankAccount(b.id)}
+                        onClick={() => confirm(`حساب «${b.bankName}» حذف شود؟`) && onDeleteBankAccount(b.id)}
                         className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700"
                         title="حذف"
                       >
@@ -276,7 +276,7 @@ export const BankAccountsModal: React.FC<BankAccountsModalProps> = ({
                   <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-700/60 text-xs">
                     <div>
                       <span className="text-slate-400 text-[11px]">موجودی در نرم‌افزار: </span>
-                      <span className="font-extrabold text-slate-900 dark:text-slate-100 font-mono">
+                      <span className="font-extrabold text-slate-900 dark:text-slate-100">
                         {formatToman(b.currentBalance)}
                       </span>
                     </div>

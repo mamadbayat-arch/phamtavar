@@ -1,22 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Megaphone, ExternalLink, X, Sparkles } from 'lucide-react';
+import { Megaphone, ExternalLink, X } from 'lucide-react';
 import { AdConfig } from '../types';
+import { apiJson, hasServer, openExternal } from '../utils/api';
 
-interface AdBannerProps {
-  onOpenAdminPanel?: () => void;
-}
-
-export const AdBanner: React.FC<AdBannerProps> = ({ onOpenAdminPanel }) => {
+export const AdBanner: React.FC = () => {
   const [ad, setAd] = useState<AdConfig | null>(null);
   const [isDismissed, setIsDismissed] = useState(false);
 
   useEffect(() => {
-    fetch('/api/ads')
-      .then(res => res.json())
+    if (!hasServer()) return;
+    apiJson('/api/ads')
       .then(data => {
-        if (data.success && data.ads && data.ads.active) {
-          setAd(data.ads);
-        }
+        if (data.ads?.active && data.ads.title) setAd(data.ads);
       })
       .catch(() => {});
   }, []);
@@ -47,11 +42,17 @@ export const AdBanner: React.FC<AdBannerProps> = ({ onOpenAdminPanel }) => {
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
-          {ad.ctaUrl && (
+          {ad.ctaUrl && /^https:\/\//i.test(ad.ctaUrl) && (
             <a
               href={ad.ctaUrl}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={e => {
+                if (window.PersonalNative) {
+                  e.preventDefault();
+                  openExternal(ad.ctaUrl!);
+                }
+              }}
               className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white text-emerald-800 hover:bg-emerald-50 text-[11px] font-bold shadow-xs transition-colors"
             >
               <span>{ad.ctaText || 'مشاهده'}</span>
@@ -63,6 +64,7 @@ export const AdBanner: React.FC<AdBannerProps> = ({ onOpenAdminPanel }) => {
             onClick={() => setIsDismissed(true)}
             className="p-1 text-emerald-200 hover:text-white rounded-md hover:bg-white/10 transition-colors"
             title="بستن اعلان"
+            aria-label="بستن اعلان"
           >
             <X className="w-3.5 h-3.5" />
           </button>

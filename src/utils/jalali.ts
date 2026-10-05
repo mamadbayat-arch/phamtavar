@@ -44,6 +44,9 @@ export const formatToman = (amount: number): string => {
   return `${faNumberFormatter.format(amount)} تومان`;
 };
 
+/** Persian-formatted number without a unit, e.g. ۱٬۷۰۰٬۰۰۰. */
+export const formatAmount = (amount: number): string => faNumberFormatter.format(amount);
+
 export const dateKey = (d: Date): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
@@ -171,3 +174,33 @@ export const getFullWeekDayName = (dateStr: string): string => {
   return names[getJalaliWeekDayIndex(dateStr)];
 };
 
+
+/** Jalali day of month (1..31) for a Gregorian date key. */
+export const getJalaliDay = (dateStr: string): number => Number(toJalali(dateStr).split('/')[2]) || 1;
+
+/** "1405/07" for a Gregorian date key. */
+export const getJalaliMonthKey = (dateStr: string): string => toJalali(dateStr).slice(0, 7);
+
+/** Every Gregorian date key that falls inside the given Jalali month ("1405/07"). */
+export const getDatesOfJalaliMonth = (jMonth: string): string[] => {
+  let cur: string;
+  try {
+    cur = parseJalali(`${jMonth}/01`);
+  } catch {
+    return [];
+  }
+  const dates: string[] = [];
+  while (dates.length < 31 && getJalaliMonthKey(cur) === jMonth) {
+    dates.push(cur);
+    cur = moveDay(cur, 1);
+  }
+  return dates;
+};
+
+const jMonthNames = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+
+/** "مهر ۱۴۰۵" for "1405/07". */
+export const formatJMonthKey = (jMonth: string): string => {
+  const [y, m] = jMonth.split('/').map(Number);
+  return `${jMonthNames[m - 1] || ''} ${toPersianDigits(y)}`.trim();
+};

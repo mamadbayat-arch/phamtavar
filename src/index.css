@@ -2,6 +2,12 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* In-between slate steps used across the components (not part of Tailwind's default scale). */
+@theme {
+  --color-slate-750: oklch(32.5% 0.041 260);
+  --color-slate-850: oklch(24.3% 0.041 263);
+}
+
 @font-face {
   font-family: 'Kalameh';
   src: url('/assets/fonts/KalamehWeb-Regular.woff2') format('woff2');
@@ -31,4 +37,48 @@ body {
 
 input, textarea, select {
   font-family: inherit;
+}
+
+button, a, [role='switch'] {
+  touch-action: manipulation;
+}
+
+:where(button, a, input, textarea, select, [role='switch']):focus-visible {
+  outline: 2px solid var(--color-emerald-500);
+  outline-offset: 2px;
+}
+
+/* Entrance animation for modals, toasts and banners. */
+@keyframes hp-enter {
+  from {
+    opacity: 0;
+    transform: translateY(var(--hp-enter-y, 0));
+  }
+}
+
+.animate-in {
+  animation: hp-enter 0.2s ease-out both;
+}
+
+.slide-in-from-bottom {
+  --hp-enter-y: 12px;
+}
+
+.slide-in-from-top {
+  --hp-enter-y: -12px;
+}
+
+.scrollbar-none {
+  scrollbar-width: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

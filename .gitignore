@@ -14,3 +14,10 @@ android/app/build/
 *.apk
 !public/hamtavar-personal-debug.apk
 apk-out/
+
+# Runtime data: real users, their backups and logs must never be committed.
+data/users.json
+data/cloud_backups/
+data/*.jsonl
+data/*.old
+data/*.tmp

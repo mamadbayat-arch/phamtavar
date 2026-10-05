@@ -9,6 +9,8 @@ import {
   Quadrant,
 } from '../types';
 
+import { apiFetch, getToken, hasServer, isTelemetryEnabled } from './api';
+
 const SESSION_KEY = 'hp_ml_session_id';
 
 /**
@@ -111,17 +113,11 @@ export function appendActionLog(
  * Fire-and-forget sync of action log to the ML backend.
  */
 export function sendActionLogToBackend(log: UserActionLog): void {
-  try {
-    fetch('/api/ml/log-action', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(log),
-    }).catch(() => {
-      // Offline or network error - logged locally in state
-    });
-  } catch {
-    // Non-blocking
-  }
+  // Only signed-in users who left usage sharing on send anything.
+  if (!hasServer() || !getToken() || !isTelemetryEnabled()) return;
+  apiFetch('/api/ml/log-action', { method: 'POST', body: JSON.stringify(log) }).catch(() => {
+    // Offline or network error - the log stays in local state
+  });
 }
 
 /**
@@ -211,7 +207,7 @@ export function enrichHabitWithMl(habit: Habit, isNew = false): Habit {
   const logs = habit.logs || [];
   const streakCount = calculateCurrentStreak(logs);
   const bestStreak = Math.max(habit.bestStreak || 0, streakCount);
-  const completionRate30d = Math.round((Math.min(logs.length, 30) / 30) * 100) / 100;
+  const completionRate30d = Math.round((countLogsInLastDays(logs, 30) / 30) * 100) / 100;
 
   return {
     ...habit,
@@ -223,10 +219,32 @@ export function enrichHabitWithMl(habit: Habit, isNew = false): Habit {
   };
 }
 
-function calculateCurrentStreak(logs: string[]): number {
+const localDateKey = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** Consecutive logged days ending today (or yesterday, if today is not logged yet). */
+export function calculateCurrentStreak(logs: string[]): number {
   if (!logs || logs.length === 0) return 0;
-  const sorted = Array.from(new Set(logs)).sort().reverse();
-  return sorted.length;
+  const done = new Set(logs);
+  const cursor = new Date();
+  cursor.setHours(12, 0, 0, 0);
+  if (!done.has(localDateKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+
+  let streak = 0;
+  while (done.has(localDateKey(cursor))) {
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+function countLogsInLastDays(logs: string[], days: number): number {
+  const from = new Date();
+  from.setHours(12, 0, 0, 0);
+  from.setDate(from.getDate() - (days - 1));
+  const fromKey = localDateKey(from);
+  const toKey = localDateKey(new Date());
+  return new Set(logs.filter(d => d >= fromKey && d <= toKey)).size;
 }
 
 /**

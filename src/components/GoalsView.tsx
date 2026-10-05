@@ -44,7 +44,7 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
         <button
           onClick={onOpenNewGoalModal}
-          className="flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
+          className="flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none whitespace-nowrap flex-shrink-0"
         >
           <Plus className="w-4 h-4 flex-shrink-0" />
           <span className="leading-none">هدف جدید</span>
@@ -106,13 +106,15 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => onEditGoal(goal)}
-                      className="p-1 text-slate-400 hover:text-slate-600"
+                      aria-label="ویرایش هدف"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => onDeleteGoal(goal.id)}
-                      className="p-1 text-slate-400 hover:text-rose-500"
+                      onClick={() => confirm(`هدف «${goal.title}» حذف شود؟`) && onDeleteGoal(goal.id)}
+                      aria-label="حذف هدف"
+                      className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

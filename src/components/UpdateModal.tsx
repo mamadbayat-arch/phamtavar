@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { apiUrl, isNativeApp, openExternal } from '../utils/api';
 import {
   Download,
   Sparkles,
@@ -39,45 +40,19 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
   const isMandatory = versionInfo.isMandatory;
 
   const handleDownloadAndInstallApk = () => {
-    setIsDownloading(true);
-    setDownloadProgress(10);
-
-    // Simulate smooth progress bar for realistic user feedback
-    const interval = setInterval(() => {
-      setDownloadProgress(prev => {
-        if (prev >= 95) {
-          clearInterval(interval);
-          return 95;
-        }
-        return prev + 15;
-      });
-    }, 200);
-
-    setTimeout(() => {
-      clearInterval(interval);
-      setDownloadProgress(100);
-      setIsDownloading(false);
-      setIsDownloaded(true);
-
-      const defaultPublicApkUrl = 'https://github.com/mamadbayat-arch/phamtavar/raw/main/public/hamtavar-personal-debug.apk';
-      const downloadUrl = versionInfo.apkUrl && versionInfo.apkUrl.startsWith('http')
-        ? versionInfo.apkUrl
+    const defaultPublicApkUrl = 'https://github.com/mamadbayat-arch/phamtavar/raw/main/public/hamtavar-personal-debug.apk';
+    const apkUrl = versionInfo.apkUrl || '';
+    const downloadUrl = /^https:\/\//i.test(apkUrl)
+      ? apkUrl
+      : apkUrl.startsWith('/') && !isNativeApp()
+        ? apiUrl(apkUrl)
         : defaultPublicApkUrl;
 
-      // If running inside Android Native WebView Bridge
-      if ((window as any).PersonalNative && typeof (window as any).PersonalNative.downloadAndInstallApk === 'function') {
-        (window as any).PersonalNative.downloadAndInstallApk(downloadUrl);
-      } else {
-        // Standard Web/Browser download
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = 'hamtavar-personal-update.apk';
-        a.target = '_blank';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-    }, 1500);
+    // The system browser / download manager takes over from here.
+    openExternal(downloadUrl);
+    setDownloadProgress(100);
+    setIsDownloading(false);
+    setIsDownloaded(true);
   };
 
   const handlePwaReload = () => {
@@ -106,6 +81,7 @@ export const UpdateModal: React.FC<UpdateModalProps> = ({
               onClick={onClose}
               className="absolute top-4 left-4 p-1.5 rounded-full text-white/80 hover:text-white hover:bg-white/10 transition-colors"
               title="بستن"
+              aria-label="بستن"
             >
               <X className="w-5 h-5" />
             </button>

@@ -17,6 +17,22 @@ public class MainActivity extends Activity {
     private WebView web;
     private String pendingBackup;
     private static final int EXPORT = 10, IMPORT = 11, MAX = 4000000;
+    private static final String ASSET_HOST = "appassets.androidplatform.net";
+    // The only remote origin the WebView may talk to; null when the app is built fully offline.
+    private static final Uri API_ORIGIN = parseApiOrigin(BuildConfig.API_BASE);
+
+    private static Uri parseApiOrigin(String base) {
+        if (base == null || base.isEmpty()) return null;
+        Uri u = Uri.parse(base);
+        return "https".equals(u.getScheme()) && u.getHost() != null ? u : null;
+    }
+
+    private static boolean isApiRequest(Uri u) {
+        return API_ORIGIN != null
+            && "https".equals(u.getScheme())
+            && API_ORIGIN.getHost().equalsIgnoreCase(u.getHost())
+            && API_ORIGIN.getPort() == u.getPort();
+    }
 
     @Override
     public void onCreate(Bundle state) {
@@ -27,10 +43,7 @@ public class MainActivity extends Activity {
 
         // Request SMS permissions if on modern Android
         if (checkSelfPermission(android.Manifest.permission.RECEIVE_SMS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{
-                android.Manifest.permission.RECEIVE_SMS,
-                android.Manifest.permission.READ_SMS
-            }, 101);
+            requestPermissions(new String[]{ android.Manifest.permission.RECEIVE_SMS }, 101);
         }
 
         web.getSettings().setJavaScriptEnabled(true);
@@ -48,8 +61,15 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                WebResourceResponse r = loader.shouldInterceptRequest(request.getUrl());
-                return r != null ? r : new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
+                Uri u = request.getUrl();
+                if (ASSET_HOST.equals(u.getHost())) {
+                    WebResourceResponse r = loader.shouldInterceptRequest(u);
+                    if (r != null) return r;
+                } else if (isApiRequest(u)) {
+                    return null; // let the WebView reach the configured server
+                }
+                // Everything else stays blocked.
+                return new WebResourceResponse("text/plain", "UTF-8", new ByteArrayInputStream(new byte[0]));
             }
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -94,6 +114,24 @@ public class MainActivity extends Activity {
     }
 
     public class Bridge {
+        @JavascriptInterface
+        public String apiBase() {
+            return API_ORIGIN == null ? "" : BuildConfig.API_BASE;
+        }
+
+        // Hands an https link (APK download, banner link) to the system browser.
+        @JavascriptInterface
+        public void openExternal(String url) {
+            if (url == null || !url.startsWith("https://")) return;
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                } catch (Exception e) {
+                    result("برنامه‌ای برای باز کردن این پیوند پیدا نشد.");
+                }
+            });
+        }
+
         @JavascriptInterface
         public String readState() {
             return getSharedPreferences("personal", MODE_PRIVATE).getString("state", "");

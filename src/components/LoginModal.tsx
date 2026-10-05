@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Smartphone, User, ArrowLeft, CheckCircle2, ShieldCheck, Sparkles, RefreshCw, KeyRound, AlertCircle } from 'lucide-react';
 import { UserProfile } from '../types';
 import { HamtavarLogo } from './HamtavarLogo';
+import { ApiError, postJson, setToken } from '../utils/api';
+import { toEnglishDigits } from '../utils/jalali';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -16,70 +18,61 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [infoMsg, setInfoMsg] = useState('');
-  const [fallbackCode, setFallbackCode] = useState<string | null>(null);
-  const [timer, setTimer] = useState(120);
+  // Only a development server ever returns the code; production never does.
+  const [devCode, setDevCode] = useState<string | null>(null);
+  const [timer, setTimer] = useState(60);
 
   useEffect(() => {
     if (isOpen) {
+      // A fresh form every time: the next person must not see the last user's number.
       setStep('info');
+      setFullName('');
+      setMobile('');
       setOtpCode('');
       setErrorMsg('');
       setInfoMsg('');
+      setDevCode(null);
     }
   }, [isOpen]);
 
   useEffect(() => {
-    let interval: any;
-    if (step === 'otp' && timer > 0) {
-      interval = setInterval(() => setTimer(t => t - 1), 1000);
-    }
+    if (step !== 'otp' || timer <= 0) return;
+    const interval = setInterval(() => setTimer(t => t - 1), 1000);
     return () => clearInterval(interval);
   }, [step, timer]);
 
   if (!isOpen) return null;
+
+  const cleanMobile = toEnglishDigits(mobile).replace(/\D/g, '');
 
   const handleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMsg('');
     setInfoMsg('');
 
-    const cleanMobile = mobile.trim();
-    if (!cleanMobile) {
-      setErrorMsg('لطفاً شماره موبایل خود را وارد نمایید.');
+    if (!fullName.trim()) {
+      setErrorMsg('لطفاً نام و نام خانوادگی خود را وارد کنید.');
       return;
     }
     if (!/^09\d{9}$/.test(cleanMobile)) {
       setErrorMsg('شماره موبایل نامعتبر است. نمونه صحیح: ۰۹۱۲۳۴۵۶۷۸۹');
       return;
     }
-    if (!fullName.trim()) {
-      setErrorMsg('لطفاً نام و نام خانوادگی خود را وارد کنید.');
-      return;
-    }
 
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/send-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mobile: cleanMobile, fullName: fullName.trim() }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setStep('otp');
-        setTimer(120);
-        setFallbackCode(data.fallbackCode || null);
-        setInfoMsg(data.message || 'کد تایید ارسال گردید.');
-      } else {
-        setErrorMsg(data.message || 'خطا در ارسال کد تایید');
-      }
-    } catch (err: any) {
-      // In case of offline or local standalone
-      const mockCode = '12345';
+      const data = await postJson('/api/auth/send-otp', { mobile: cleanMobile, fullName: fullName.trim() });
       setStep('otp');
-      setTimer(120);
-      setFallbackCode(mockCode);
-      setInfoMsg('حالت آفلاین: از کد ۱۲۳۴۵ برای ورود استفاده کنید.');
+      setOtpCode('');
+      setTimer(60);
+      setDevCode(data.devCode || null);
+      setInfoMsg(data.message || 'کد تأیید ارسال شد.');
+    } catch (err) {
+      const apiErr = err as ApiError;
+      if (apiErr.status === 429 && apiErr.data?.retryAfter && step === 'otp') {
+        setTimer(apiErr.data.retryAfter);
+      }
+      setErrorMsg(apiErr.message || 'خطا در ارسال کد تأیید');
     } finally {
       setIsLoading(false);
     }
@@ -89,72 +82,42 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
     if (e) e.preventDefault();
     setErrorMsg('');
 
-    const cleanCode = otpCode.trim();
-    if (!cleanCode) {
-      setErrorMsg('لطفاً کد تایید را وارد کنید.');
+    const cleanCode = toEnglishDigits(otpCode).replace(/\D/g, '');
+    if (cleanCode.length !== 5) {
+      setErrorMsg('کد تأیید ۵ رقمی را کامل وارد کنید.');
       return;
     }
 
     setIsLoading(true);
     try {
-      const res = await fetch('/api/auth/verify-otp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mobile: mobile.trim(),
-          code: cleanCode,
-          fullName: fullName.trim(),
-        }),
+      const data = await postJson('/api/auth/verify-otp', {
+        mobile: cleanMobile,
+        code: cleanCode,
+        fullName: fullName.trim(),
       });
-      const data = await res.json();
-      if (data.success && data.user) {
-        onSuccess(data.user);
-      } else {
-        // Fallback check
-        if (fallbackCode && cleanCode === fallbackCode) {
-          const profile: UserProfile = {
-            mobile: mobile.trim(),
-            fullName: fullName.trim() || 'کاربر همتوار',
-            isVerified: true,
-            registeredAt: new Date().toISOString(),
-          };
-          onSuccess(profile);
-        } else {
-          setErrorMsg(data.message || 'کد وارد شده صحیح نمی‌باشد.');
-        }
-      }
-    } catch (err: any) {
-      if (cleanCode === '12345' || (fallbackCode && cleanCode === fallbackCode)) {
-        const profile: UserProfile = {
-          mobile: mobile.trim() || '09120000000',
-          fullName: fullName.trim() || 'کاربر همتوار',
-          isVerified: true,
-          registeredAt: new Date().toISOString(),
-        };
-        onSuccess(profile);
-      } else {
-        setErrorMsg('خطا در بررسی کد. مجدداً تلاش نمایید.');
-      }
+      setToken(data.token);
+      onSuccess(data.user);
+    } catch (err) {
+      setErrorMsg((err as ApiError).message || 'خطا در بررسی کد. دوباره تلاش کنید.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleFastLoginWithFallback = () => {
-    if (fallbackCode) {
-      setOtpCode(fallbackCode);
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="login-title"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+    >
       <div className="relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full overflow-hidden p-6 sm:p-7 space-y-5">
         {/* Brand Header */}
         <div className="flex flex-col items-center text-center space-y-2">
           <div className="p-3 bg-emerald-500/10 rounded-2xl">
             <HamtavarLogo size={52} />
           </div>
-          <h2 className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
+          <h2 id="login-title" className="text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight">
             ورود به سامانه همتوار شخصی
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs leading-relaxed">
@@ -177,14 +140,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
         </div>
 
         {errorMsg && (
-          <div className="flex items-center gap-2 p-3 text-xs font-medium text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl">
+          <div role="alert" className="flex items-center gap-2 p-3 text-xs font-medium text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {infoMsg && (
-          <div className="flex items-center gap-2 p-3 text-xs font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+          <div role="status" className="flex items-center gap-2 p-3 text-xs font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl">
             <Sparkles className="w-4 h-4 flex-shrink-0" />
             <span>{infoMsg}</span>
           </div>
@@ -203,6 +166,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
                 placeholder="مثلاً: محمد بیات"
                 value={fullName}
                 onChange={e => setFullName(e.target.value)}
+                autoComplete="name"
+                maxLength={80}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 dir="rtl"
                 required
@@ -219,6 +184,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
                 placeholder="۰۹۱۲۳۴۵۶۷۸۹"
                 value={mobile}
                 onChange={e => setMobile(e.target.value)}
+                inputMode="numeric"
+                autoComplete="tel"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-sm font-semibold tracking-wider text-left focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 dir="ltr"
                 maxLength={11}
@@ -258,12 +225,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">شماره ثبت‌شده:</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200 font-mono" dir="ltr">
-                  {mobile}
+                  {cleanMobile}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                پیامک: «به همتوار خوش آمدید. کد ورود شما #CODE# hamtavar.ir»
-              </p>
+<p className="text-[11px] text-slate-400">کد ۵ رقمی پیامک‌شده به این شماره را وارد کنید.</p>
             </div>
 
             <div className="space-y-1.5">
@@ -279,7 +244,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
                 ) : (
                   <button
                     type="button"
-                    onClick={handleSendOtp}
+                    onClick={() => handleSendOtp()}
+                    disabled={isLoading}
                     className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold hover:underline"
                   >
                     ارسال مجدد کد
@@ -289,9 +255,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
 
               <input
                 type="text"
-                maxLength={6}
+                maxLength={5}
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 value={otpCode}
-                onChange={e => setOtpCode(e.target.value)}
+                onChange={e => setOtpCode(toEnglishDigits(e.target.value).replace(/\D/g, ''))}
                 placeholder="-----"
                 className="w-full px-3.5 py-3 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-center text-xl font-bold tracking-[0.4em] font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 autoFocus
@@ -300,15 +268,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
               />
             </div>
 
-            {fallbackCode && (
+            {devCode && (
               <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-[11px] text-amber-800 dark:text-amber-300 flex items-center justify-between gap-2">
-                <span>کد تست سریع: <strong>{fallbackCode}</strong></span>
+                <span>
+                  سرور در حالت توسعه است؛ کد: <strong dir="ltr">{devCode}</strong>
+                </span>
                 <button
                   type="button"
-                  onClick={handleFastLoginWithFallback}
-                  className="px-2 py-0.5 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-bold text-[10px]"
+                  onClick={() => setOtpCode(devCode)}
+                  className="px-2 py-1 rounded-md bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 font-bold text-[10px]"
                 >
-                  درج خودکار
+                  درج کد
                 </button>
               </div>
             )}
@@ -346,7 +316,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onSuccess }) => 
         {/* Footer Guarantee */}
         <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center gap-1.5 text-[11px] text-slate-400">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-          <span>ورود فقط برای بار اول جهت فعال‌سازی حساب و پشتیبان ابری است</span>
+          <span>اطلاعات شما روی همین دستگاه می‌ماند؛ حساب فقط برای پشتیبان ابری است</span>
         </div>
       </div>
     </div>

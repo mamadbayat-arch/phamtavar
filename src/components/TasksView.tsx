@@ -185,7 +185,8 @@ export const TasksView: React.FC<TasksViewProps> = ({
           {/* Checkbox */}
           <button
             onClick={() => onToggleTask(task.id)}
-            className="mt-0.5 text-emerald-600 dark:text-emerald-400 hover:scale-110 active:scale-95 transition-transform flex-shrink-0"
+            className="-m-1.5 p-1.5 text-emerald-600 dark:text-emerald-400 hover:scale-110 active:scale-95 transition-transform flex-shrink-0"
+            aria-pressed={task.done}
             aria-label={task.done ? 'علامت به عنوان انجام نشده' : 'علامت به عنوان انجام شده'}
           >
             {task.done ? (
@@ -209,18 +210,20 @@ export const TasksView: React.FC<TasksViewProps> = ({
               </span>
 
               {/* Actions */}
-              <div className="flex items-center gap-1 flex-shrink-0">
+              <div className="flex items-center flex-shrink-0 -mt-1.5 -ml-1.5">
                 <button
                   onClick={() => onEditTask(task)}
-                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                   title="ویرایش"
+                  aria-label="ویرایش کار"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
                 </button>
                 <button
-                  onClick={() => onDeleteTask(task.id)}
-                  className="p-1 text-slate-400 hover:text-rose-500 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  onClick={() => confirm(`کار «${task.title}» حذف شود؟`) && onDeleteTask(task.id)}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
                   title="حذف"
+                  aria-label="حذف کار"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -349,7 +352,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
             {/* Quick Add Button */}
             <button
               onClick={() => onOpenNewTaskModal()}
-              className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
+              className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none whitespace-nowrap flex-shrink-0"
             >
               <Plus className="w-4 h-4 flex-shrink-0" />
               <span className="leading-none">کار جدید</span>
@@ -388,7 +391,7 @@ export const TasksView: React.FC<TasksViewProps> = ({
         </div>
 
         {/* Status Filter Pills */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-1 text-xs">
+        <div className="flex items-center justify-between gap-2 overflow-x-auto scrollbar-none pb-1 text-xs">
           <div className="flex gap-1.5 flex-nowrap">
             {[
               { id: 'all' as StatusFilter, label: 'همه کارها' },

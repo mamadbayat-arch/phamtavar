@@ -164,6 +164,7 @@ export interface UserProfile {
   fullName: string;
   isVerified: boolean;
   registeredAt: string;
+  isAdmin?: boolean;
 }
 
 export interface AdConfig {

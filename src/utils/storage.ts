@@ -1,4 +1,4 @@
-import { AppState, Task, Goal, Habit, Installment, Cheque, Money, UserActionLog } from '../types';
+import { AppState, Task, Goal, Habit, Installment, Cheque, Money, UserProfile } from '../types';
 import { getTodayKey, moveDay } from './jalali';
 import {
   enrichTaskWithMl,
@@ -8,14 +8,10 @@ import {
   createActionLog,
 } from './behaviorLogger';
 
+import { hasServer } from './api';
+
 declare global {
   interface Window {
-    PersonalNative?: {
-      readState: () => string;
-      writeState: (json: string) => boolean;
-      exportBackup: (json: string) => void;
-      importBackup: () => void;
-    };
     receiveBackup?: (json: string) => void;
     backupResult?: (text: string) => void;
     handleBack?: () => boolean;
@@ -25,6 +21,8 @@ declare global {
 const STORAGE_KEY = 'hp_state';
 const LEGACY_KEY = 'personal';
 const ACTIVE_USER_MOBILE_KEY = 'hp_active_mobile';
+// Used by the Android build when no server is configured (pure on-device mode).
+const LOCAL_DEVICE_KEY = 'hp_state_local';
 
 export const getInitialSampleState = (): AppState => {
   const today = getTodayKey();
@@ -281,15 +279,23 @@ export const validateBackup = (d: any): AppState => {
   }
 
   // Normalize missing arrays
-  const tasks = Array.isArray(d.tasks) ? d.tasks.map((t: any) => enrichTaskWithMl(t)) : [];
-  const money = Array.isArray(d.money) ? d.money.map((m: any) => enrichMoneyWithMl(m)) : [];
-  const goals = Array.isArray(d.goals) ? d.goals.map((g: any) => enrichGoalWithMl(g)) : [];
-  const habits = Array.isArray(d.habits) ? d.habits.map((h: any) => enrichHabitWithMl(h)) : [];
-  const installments = Array.isArray(d.installments) ? d.installments : [];
-  const cheques = Array.isArray(d.cheques) ? d.cheques : [];
-  const bankAccounts = Array.isArray(d.bankAccounts) ? d.bankAccounts : [];
-  const actionLogs = Array.isArray(d.actionLogs) ? d.actionLogs : [];
-  const userProfile = d.userProfile;
+  const isEntity = (x: any) => x && typeof x === 'object' && typeof x.id === 'string' && typeof x.title === 'string';
+  const tasks = Array.isArray(d.tasks) ? d.tasks.filter(isEntity).map((t: any) => enrichTaskWithMl(t)) : [];
+  const money = Array.isArray(d.money) ? d.money.filter(isEntity).map((m: any) => enrichMoneyWithMl(m)) : [];
+  const goals = Array.isArray(d.goals) ? d.goals.filter(isEntity).map((g: any) => enrichGoalWithMl(g)) : [];
+  const habits = Array.isArray(d.habits)
+    ? d.habits
+        .filter(isEntity)
+        .map((h: any) =>
+          enrichHabitWithMl({ ...h, days: Array.isArray(h.days) ? h.days : [], logs: Array.isArray(h.logs) ? h.logs : [] })
+        ) : [];
+  const installments = Array.isArray(d.installments) ? d.installments.filter(isEntity) : [];
+  const cheques = Array.isArray(d.cheques) ? d.cheques.filter(isEntity) : [];
+  const bankAccounts = Array.isArray(d.bankAccounts)
+    ? d.bankAccounts.filter((b: any) => b && typeof b.id === 'string' && typeof b.bankName === 'string')
+    : [];
+  const actionLogs = Array.isArray(d.actionLogs) ? d.actionLogs.slice(-2000) : [];
+  const userProfile = normalizeProfile(d.userProfile);
   const budget = Number.isFinite(d.budget) && d.budget >= 0 ? Number(d.budget) : 0;
 
   return {
@@ -306,88 +312,106 @@ export const validateBackup = (d: any): AppState => {
   };
 };
 
-export const clearUserSession = (): void => {
-  try {
-    localStorage.removeItem(ACTIVE_USER_MOBILE_KEY);
-    localStorage.removeItem('hp_state_guest');
-    sessionStorage.removeItem('hp_session');
-  } catch {}
+const normalizeProfile = (p: any): UserProfile | undefined => {
+  if (!p || typeof p !== 'object' || typeof p.mobile !== 'string') return undefined;
+  return {
+    mobile: p.mobile.replace(/\D/g, ''),
+    fullName: typeof p.fullName === 'string' && p.fullName.trim() ? p.fullName.trim().slice(0, 80) : 'کاربر همتوار',
+    isVerified: p.isVerified === true,
+    registeredAt: typeof p.registeredAt === 'string' ? p.registeredAt : new Date().toISOString(),
+    isAdmin: p.isAdmin === true,
+  };
 };
 
-export const getUserState = (mobile: string): AppState | null => {
+const readKey = (key: string): AppState | null => {
   try {
-    const clean = mobile.replace(/\D/g, '');
-    const raw = localStorage.getItem(`hp_state_${clean}`);
-    if (raw && raw.trim().length > 2) {
-      return validateBackup(JSON.parse(raw));
-    }
-  } catch {}
+    const raw = localStorage.getItem(key);
+    if (raw && raw.trim().length > 2) return validateBackup(JSON.parse(raw));
+  } catch (err) {
+    console.warn(`Failed to read ${key}:`, err);
+  }
   return null;
 };
 
-export const loadStoredState = (): AppState => {
+const readNative = (): AppState | null => {
   try {
-    // 1. Check if there's an active logged-in user mobile
-    const activeMobile = localStorage.getItem(ACTIVE_USER_MOBILE_KEY);
-    if (activeMobile) {
-      const userRaw = localStorage.getItem(`hp_state_${activeMobile}`);
-      if (userRaw && userRaw.trim().length > 2) {
-        return validateBackup(JSON.parse(userRaw));
-      }
-    }
-
-    // 2. Try Android Native Bridge
-    if (window.PersonalNative && typeof window.PersonalNative.readState === 'function') {
-      const nativeRaw = window.PersonalNative.readState();
-      if (nativeRaw && nativeRaw.trim().length > 2) {
-        return validateBackup(JSON.parse(nativeRaw));
-      }
-    }
-
-    // 3. Try guest state or localStorage
-    const guestRaw = localStorage.getItem('hp_state_guest');
-    if (guestRaw && guestRaw.trim().length > 2) {
-      return validateBackup(JSON.parse(guestRaw));
-    }
-
-    const localRaw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_KEY);
-    if (localRaw && localRaw.trim().length > 2) {
-      return validateBackup(JSON.parse(localRaw));
-    }
+    const raw = window.PersonalNative?.readState?.();
+    if (raw && raw.trim().length > 2) return validateBackup(JSON.parse(raw));
   } catch (err) {
-    console.warn('Failed to load stored state:', err);
+    console.warn('Failed to read native state:', err);
+  }
+  return null;
+};
+
+const writeNative = (raw: string): void => {
+  try {
+    window.PersonalNative?.writeState?.(raw);
+  } catch {}
+};
+
+/** Ends the session on this device. The signed-out user's data stays in its own partition. */
+export const clearUserSession = (): void => {
+  try {
+    localStorage.removeItem(ACTIVE_USER_MOBILE_KEY);
+    // Older versions mirrored the active user's data into these shared keys.
+    localStorage.removeItem('hp_state_guest');
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_KEY);
+    sessionStorage.removeItem('hp_session');
+  } catch {}
+  writeNative('');
+};
+
+export const getUserState = (mobile: string): AppState | null => readKey(`hp_state_${mobile.replace(/\D/g, '')}`);
+
+export const loadStoredState = (): AppState => {
+  let activeMobile: string | null = null;
+  try {
+    activeMobile = localStorage.getItem(ACTIVE_USER_MOBILE_KEY);
+  } catch {}
+
+  if (!hasServer()) {
+    // On-device mode: no account, the data simply belongs to this phone. Data
+    // saved by an older build under a phone number is adopted as-is.
+    const local =
+      readKey(LOCAL_DEVICE_KEY) ||
+      (activeMobile ? readKey(`hp_state_${activeMobile}`) : null) ||
+      readNative() ||
+      readKey(STORAGE_KEY) ||
+      readKey(LEGACY_KEY);
+    const initial = local ? { ...local, userProfile: undefined } : getInitialSampleState();
+    saveStoredState(initial);
+    return initial;
   }
 
-  // 4. Fallback to Initial Sample State
-  const initial = getInitialSampleState();
-  saveStoredState(initial);
-  return initial;
+  if (activeMobile) {
+    const userState = readKey(`hp_state_${activeMobile}`);
+    if (userState?.userProfile?.isVerified) return userState;
+  }
+
+  // A signed-in session saved by the native shell survives a cleared WebView cache.
+  const native = readNative();
+  if (native?.userProfile?.isVerified) return native;
+
+  // Signed out: start empty and let the login screen take over.
+  return getEmptyState();
 };
 
 export const saveStoredState = (state: AppState): boolean => {
   try {
-    const raw = JSON.stringify(state);
-
-    // 1. If user is logged in with verified mobile, store to their user-specific partition
-    if (state.userProfile?.isVerified && state.userProfile?.mobile) {
-      const cleanMobile = state.userProfile.mobile.replace(/\D/g, '');
+    const profile = state.userProfile;
+    if (profile?.isVerified && profile.mobile) {
+      const raw = JSON.stringify(state);
+      const cleanMobile = profile.mobile.replace(/\D/g, '');
       localStorage.setItem(`hp_state_${cleanMobile}`, raw);
       localStorage.setItem(ACTIVE_USER_MOBILE_KEY, cleanMobile);
-    } else {
-      // Guest or logged-out mode
-      localStorage.setItem('hp_state_guest', raw);
-      localStorage.removeItem(ACTIVE_USER_MOBILE_KEY);
+      writeNative(raw);
+    } else if (!hasServer()) {
+      const raw = JSON.stringify(state);
+      localStorage.setItem(LOCAL_DEVICE_KEY, raw);
+      writeNative(raw);
     }
-
-    // 2. Save active state to primary key for fallback/backwards-compatibility
-    localStorage.setItem(STORAGE_KEY, raw);
-    localStorage.setItem(LEGACY_KEY, raw);
-
-    // 3. Save to Android Native SharedPreferences if running in WebView
-    if (window.PersonalNative && typeof window.PersonalNative.writeState === 'function') {
-      window.PersonalNative.writeState(raw);
-    }
-
+    // Signed out with a server configured: there is nothing of the user's to persist.
     return true;
   } catch (err) {
     console.error('Failed to save state:', err);

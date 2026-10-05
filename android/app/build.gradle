@@ -1,6 +1,8 @@
 apply plugin: 'com.android.application'
 def appVersionCode = (project.findProperty('appVersionCode') ?: '2').toInteger()
 def appVersionName = project.findProperty('appVersionName') ?: '1.2.0'
+// https origin of the Hamtavar server (e.g. -PapiBase=https://personal.example.ir). Empty = fully offline app.
+def apiBase = (project.findProperty('apiBase') ?: '').toString().trim().replaceAll('/+$', '')
 android {
  namespace 'ir.hamtavar.personal'
  compileSdk 34
@@ -10,7 +12,9 @@ android {
    targetSdk 34
    versionCode appVersionCode
    versionName appVersionName
+   buildConfigField 'String', 'API_BASE', "\"${apiBase}\""
  }
+ buildFeatures { buildConfig true }
  signingConfigs {
    debug {
      storeFile file("${System.getProperty('user.home')}/.android/debug.keystore")
