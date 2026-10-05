@@ -29,7 +29,17 @@ import { LoginModal } from './components/LoginModal';
 import { AdBanner } from './components/AdBanner';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { UpdateModal } from './components/UpdateModal';
+import { LogoutModal } from './components/LogoutModal';
 import { UserProfile, AppVersionInfo, CURRENT_APP_VERSION, CURRENT_APP_VERSION_CODE } from './types';
+import {
+  createActionLog,
+  appendActionLog,
+  sendActionLogToBackend,
+  enrichTaskWithMl,
+  enrichMoneyWithMl,
+  enrichHabitWithMl,
+  enrichGoalWithMl,
+} from './utils/behaviorLogger';
 
 declare global {
   interface Window {
@@ -60,6 +70,18 @@ export default function App() {
   const [isIosModalOpen, setIsIosModalOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  const handleConfirmLogout = () => {
+    setState(prev => ({
+      ...prev,
+      userProfile: undefined,
+    }));
+    recordBehavioralAction('app_launch', 'system', undefined, { action: 'logout' });
+    setIsLogoutModalOpen(false);
+    showToast('با موفقیت از حساب کاربری خارج شدید.');
+    setIsLoginModalOpen(true);
+  };
 
   // Auto-Update States
   const [serverVersionInfo, setServerVersionInfo] = useState<AppVersionInfo | null>(null);
@@ -251,16 +273,44 @@ export default function App() {
     currentView,
   ]);
 
+  // Behavioral ML action logger helper
+  const recordBehavioralAction = (
+    actionType: any,
+    entityType: any,
+    entityId?: string,
+    payloadSummary?: Record<string, any>
+  ) => {
+    const log = createActionLog(actionType, entityType, entityId, payloadSummary, currentView);
+    setState(prev => ({
+      ...prev,
+      actionLogs: appendActionLog(prev.actionLogs, log),
+    }));
+    sendActionLogToBackend(log);
+  };
+
   const toggleTheme = () => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Task Actions
+  // Task Actions with ML Tracking
   const handleToggleTask = (taskId: string) => {
-    setState(prev => ({
-      ...prev,
-      tasks: prev.tasks.map(t => (t.id === taskId ? { ...t, done: !t.done } : t)),
-    }));
+    setState(prev => {
+      let isDoneNow = false;
+      const updatedTasks = prev.tasks.map(t => {
+        if (t.id === taskId) {
+          isDoneNow = !t.done;
+          return enrichTaskWithMl({ ...t, done: isDoneNow });
+        }
+        return t;
+      });
+      const log = createActionLog('task_toggle', 'task', taskId, { done: isDoneNow }, currentView);
+      sendActionLogToBackend(log);
+      return {
+        ...prev,
+        tasks: updatedTasks,
+        actionLogs: appendActionLog(prev.actionLogs, log),
+      };
+    });
   };
 
   const handleToggleSubtask = (taskId: string, subIndex: number) => {
@@ -268,13 +318,14 @@ export default function App() {
       ...prev,
       tasks: prev.tasks.map(t => {
         if (t.id !== taskId || !t.subs) return t;
-        const newSubs = t.subs.map((s, idx) => (idx === subIndex ? { ...s, done: !s.done } : s));
+        const newSubs = t.subs.map((s, idx) => (idx === subIndex ? { ...s, done: !s.done, completedAt: !s.done ? new Date().toISOString() : undefined } : s));
         return { ...t, subs: newSubs };
       }),
     }));
   };
 
   const handleDeleteTask = (taskId: string) => {
+    recordBehavioralAction('task_delete', 'task', taskId);
     setState(prev => ({
       ...prev,
       tasks: prev.tasks.filter(t => t.id !== taskId),
@@ -302,7 +353,7 @@ export default function App() {
     setIsEditorOpen(true);
   };
 
-  // Money Actions
+  // Money Actions with ML Tracking
   const handleOpenNewMoneyModal = () => {
     setEditorKind('money');
     setEditorItemData(null);
@@ -316,6 +367,7 @@ export default function App() {
   };
 
   const handleDeleteMoney = (id: string) => {
+    recordBehavioralAction('money_delete', 'money', id);
     setState(prev => ({
       ...prev,
       money: prev.money.filter(m => m.id !== id),
@@ -420,10 +472,20 @@ export default function App() {
     bankId?: string,
     adjustBalance?: { bankId: string; newBalance: number }
   ) => {
-    const newMoney: Money = {
+    const rawMoney: Money = {
       ...moneyData,
       id: crypto.randomUUID(),
+      source: 'sms_parser',
     };
+    const newMoney: Money = enrichMoneyWithMl(rawMoney, true);
+
+    recordBehavioralAction('bank_sms_confirm', 'money', newMoney.id, {
+      amountTomans: newMoney.amountTomans,
+      amountLog10: newMoney.amountLog10,
+      bankId,
+      category: newMoney.category,
+      kind: newMoney.kind,
+    });
 
     setState(prev => {
       let updatedAccounts = [...(prev.bankAccounts || [])];
@@ -480,18 +542,29 @@ export default function App() {
   };
 
   const handleToggleHabitLog = (habitId: string, dateStr: string) => {
-    setState(prev => ({
-      ...prev,
-      habits: prev.habits.map(h => {
+    setState(prev => {
+      let actionType: any = 'habit_check';
+      const updatedHabits = prev.habits.map(h => {
         if (h.id !== habitId) return h;
         const exists = h.logs.includes(dateStr);
+        actionType = exists ? 'habit_uncheck' : 'habit_check';
         const newLogs = exists ? h.logs.filter(d => d !== dateStr) : [...h.logs, dateStr];
-        return { ...h, logs: newLogs };
-      }),
-    }));
+        return enrichHabitWithMl({ ...h, logs: newLogs });
+      });
+
+      const log = createActionLog(actionType, 'habit', habitId, { date: dateStr }, currentView);
+      sendActionLogToBackend(log);
+
+      return {
+        ...prev,
+        habits: updatedHabits,
+        actionLogs: appendActionLog(prev.actionLogs, log),
+      };
+    });
   };
 
   const handleDeleteHabit = (habitId: string) => {
+    recordBehavioralAction('habit_delete', 'habit', habitId);
     setState(prev => ({
       ...prev,
       habits: prev.habits.filter(h => h.id !== habitId),
@@ -506,7 +579,7 @@ export default function App() {
   };
 
   const handleConvertHabitDayToTask = (habit: Habit, dateStr: string) => {
-    const newTask: Task = {
+    const rawTask: Task = {
       id: crypto.randomUUID(),
       title: habit.title,
       date: dateStr,
@@ -514,7 +587,10 @@ export default function App() {
       habitId: habit.id,
       done: false,
       subs: [],
+      source: 'quick_add',
     };
+    const newTask = enrichTaskWithMl(rawTask, true);
+    recordBehavioralAction('task_create', 'task', newTask.id, { source: 'habit_conversion', quad: newTask.quad });
     setState(prev => ({
       ...prev,
       tasks: [newTask, ...prev.tasks],
@@ -522,7 +598,7 @@ export default function App() {
     showToast(`عادت «${habit.title}» برای تاریخ ${toJalali(dateStr)} به تب کارها اضافه شد.`);
   };
 
-  // Goal Actions
+  // Goal Actions with ML Progress Tracking
   const handleOpenNewGoalModal = () => {
     setEditorKind('goal');
     setEditorItemData(null);
@@ -536,6 +612,7 @@ export default function App() {
   };
 
   const handleDeleteGoal = (goalId: string) => {
+    recordBehavioralAction('goal_delete', 'goal', goalId);
     setState(prev => ({
       ...prev,
       goals: prev.goals.filter(g => g.id !== goalId),
@@ -546,83 +623,146 @@ export default function App() {
   };
 
   const handleUpdateGoalProgress = (goalId: string, delta: number) => {
-    setState(prev => ({
-      ...prev,
-      goals: prev.goals.map(g => {
+    setState(prev => {
+      let updatedGoal: Goal | null = null;
+      const updatedGoals = prev.goals.map(g => {
         if (g.id !== goalId) return g;
-        return { ...g, current: Math.max(0, g.current + delta) };
-      }),
-    }));
+        const nextVal = Math.max(0, g.current + delta);
+        updatedGoal = enrichGoalWithMl({ ...g, current: nextVal });
+        return updatedGoal;
+      });
+
+      const log = createActionLog(
+        'goal_progress_update',
+        'goal',
+        goalId,
+        { delta, progress: updatedGoal?.progressPercentage },
+        currentView
+      );
+      sendActionLogToBackend(log);
+
+      return {
+        ...prev,
+        goals: updatedGoals,
+        actionLogs: appendActionLog(prev.actionLogs, log),
+      };
+    });
   };
 
-  // Save entity from Universal Editor
+  // Save entity from Universal Editor with Machine Learning Normalization
   const handleSaveEntity = (kind: EditorKind, data: any) => {
     const id = data.id || crypto.randomUUID();
 
     if (kind === 'task') {
       setState(prev => {
         const existingIdx = prev.tasks.findIndex(t => t.id === id);
-        if (existingIdx !== -1) {
+        const isEdit = existingIdx !== -1;
+        const enriched = enrichTaskWithMl({ ...data, id }, !isEdit);
+        const log = createActionLog(
+          isEdit ? 'task_update' : 'task_create',
+          'task',
+          id,
+          { quad: enriched.quad, priorityScore: enriched.priorityScore },
+          currentView
+        );
+        sendActionLogToBackend(log);
+
+        if (isEdit) {
           const updated = [...prev.tasks];
-          updated[existingIdx] = { ...data, id };
-          return { ...prev, tasks: updated };
+          updated[existingIdx] = enriched;
+          return { ...prev, tasks: updated, actionLogs: appendActionLog(prev.actionLogs, log) };
         }
-        return { ...prev, tasks: [data, ...prev.tasks] };
+        return { ...prev, tasks: [enriched, ...prev.tasks], actionLogs: appendActionLog(prev.actionLogs, log) };
       });
       showToast('کار ذخیره شد.');
     } else if (kind === 'money') {
       setState(prev => {
         const existingIdx = prev.money.findIndex(m => m.id === id);
-        if (existingIdx !== -1) {
+        const isEdit = existingIdx !== -1;
+        const enriched = enrichMoneyWithMl({ ...data, id }, !isEdit);
+        const log = createActionLog(
+          'money_create',
+          'money',
+          id,
+          { amountTomans: enriched.amountTomans, amountLog10: enriched.amountLog10, kind: enriched.kind, category: enriched.category },
+          currentView
+        );
+        sendActionLogToBackend(log);
+
+        if (isEdit) {
           const updated = [...prev.money];
-          updated[existingIdx] = { ...data, id };
-          return { ...prev, money: updated };
+          updated[existingIdx] = enriched;
+          return { ...prev, money: updated, actionLogs: appendActionLog(prev.actionLogs, log) };
         }
-        return { ...prev, money: [data, ...prev.money] };
+        return { ...prev, money: [enriched, ...prev.money], actionLogs: appendActionLog(prev.actionLogs, log) };
       });
       showToast('تراکنش مالی ثبت شد.');
     } else if (kind === 'goal') {
       setState(prev => {
         const existingIdx = prev.goals.findIndex(g => g.id === id);
-        if (existingIdx !== -1) {
+        const isEdit = existingIdx !== -1;
+        const enriched = enrichGoalWithMl({ ...data, id }, !isEdit);
+        const log = createActionLog(
+          'goal_create',
+          'goal',
+          id,
+          { target: enriched.target, unit: enriched.unit, progress: enriched.progressPercentage },
+          currentView
+        );
+        sendActionLogToBackend(log);
+
+        if (isEdit) {
           const updated = [...prev.goals];
-          updated[existingIdx] = { ...data, id };
-          return { ...prev, goals: updated };
+          updated[existingIdx] = enriched;
+          return { ...prev, goals: updated, actionLogs: appendActionLog(prev.actionLogs, log) };
         }
-        return { ...prev, goals: [...prev.goals, { ...data, id }] };
+        return { ...prev, goals: [...prev.goals, enriched], actionLogs: appendActionLog(prev.actionLogs, log) };
       });
       showToast('هدف ذخیره شد.');
     } else if (kind === 'habit') {
       setState(prev => {
         const existingIdx = prev.habits.findIndex(h => h.id === id);
-        if (existingIdx !== -1) {
+        const isEdit = existingIdx !== -1;
+        const enriched = enrichHabitWithMl({ ...data, id }, !isEdit);
+        const log = createActionLog(
+          'habit_create',
+          'habit',
+          id,
+          { daysCount: enriched.days?.length, streak: enriched.streakCount },
+          currentView
+        );
+        sendActionLogToBackend(log);
+
+        if (isEdit) {
           const updated = [...prev.habits];
-          updated[existingIdx] = { ...data, id };
-          return { ...prev, habits: updated };
+          updated[existingIdx] = enriched;
+          return { ...prev, habits: updated, actionLogs: appendActionLog(prev.actionLogs, log) };
         }
-        return { ...prev, habits: [...prev.habits, { ...data, id }] };
+        return { ...prev, habits: [...prev.habits, enriched], actionLogs: appendActionLog(prev.actionLogs, log) };
       });
       showToast('عادت ذخیره شد.');
     } else if (kind === 'installment') {
+      recordBehavioralAction('installment_create', 'installment', id, { amount: data.amount, total: data.total });
       setState(prev => {
         const existingIdx = prev.installments.findIndex(i => i.id === id);
         if (existingIdx !== -1) {
           const updated = [...prev.installments];
-          updated[existingIdx] = { ...data, id };
+          updated[existingIdx] = { ...data, id, createdAt: new Date().toISOString() };
           return { ...prev, installments: updated };
         }
-        return { ...prev, installments: [...prev.installments, { ...data, id }] };
+        return { ...prev, installments: [...prev.installments, { ...data, id, createdAt: new Date().toISOString() }] };
       });
       showToast('قسط ذخیره شد.');
     } else if (kind === 'cheque') {
+      recordBehavioralAction('cheque_create', 'cheque', id, { amount: data.amount, date: data.date });
       setState(prev => {
         const existingIdx = prev.cheques.findIndex(c => c.id === id);
         if (existingIdx !== -1) {
           const updated = [...prev.cheques];
-          updated[existingIdx] = { ...data, id };
+          updated[existingIdx] = { ...data, id, createdAt: new Date().toISOString() };
           return { ...prev, cheques: updated };
         }
-        return { ...prev, cheques: [...prev.cheques, { ...data, id }] };
+        return { ...prev, cheques: [...prev.cheques, { ...data, id, createdAt: new Date().toISOString() }] };
       });
       showToast('چک ذخیره شد.');
     } else if (kind === 'budget') {
@@ -651,6 +791,13 @@ export default function App() {
 
   const pendingTasksCount = state.tasks.filter(t => !t.done).length;
 
+  const handleSelectView = (view: AppView) => {
+    if (view !== currentView) {
+      recordBehavioralAction('view_change', 'navigation', undefined, { from: currentView, to: view });
+      setCurrentView(view);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col transition-colors duration-200 antialiased selection:bg-emerald-500/20">
       {/* Header */}
@@ -658,9 +805,8 @@ export default function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenApkModal={() => setIsApkModalOpen(true)}
-        onOpenIosModal={() => setIsIosModalOpen(true)}
         onOpenAdminPanel={openAdminPanel}
+        onLogout={() => setIsLogoutModalOpen(true)}
       />
 
       {/* Ad & Announcement Banner */}
@@ -734,7 +880,7 @@ export default function App() {
       {/* Bottom Navigation */}
       <Navigation
         currentView={currentView}
-        onSelectView={setCurrentView}
+        onSelectView={handleSelectView}
         pendingTasksCount={pendingTasksCount}
       />
 
@@ -771,6 +917,7 @@ export default function App() {
         onOpenIosModal={() => setIsIosModalOpen(true)}
         onOpenAdminPanel={openAdminPanel}
         onCheckUpdate={() => setIsUpdateModalOpen(true)}
+        onLogout={() => setIsLogoutModalOpen(true)}
       />
 
       {/* APK Download & Info Modal */}
@@ -840,6 +987,15 @@ export default function App() {
           setIncomingSmsText('');
           setIsBankSmsModalOpen(true);
         }}
+      />
+
+      {/* Logout Confirmation Modal */}
+      <LogoutModal
+        isOpen={isLogoutModalOpen}
+        onClose={() => setIsLogoutModalOpen(false)}
+        onConfirm={handleConfirmLogout}
+        userName={state.userProfile?.fullName}
+        userMobile={state.userProfile?.mobile}
       />
     </div>
   );

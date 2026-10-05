@@ -1,8 +1,8 @@
-import { AppState, Task, Money, Habit } from '../types';
+import { AppState, Task, Money, Habit, UserActionLog } from '../types';
 
 export interface AITrainingSample {
   id: string;
-  domain: 'task_priority' | 'sms_parsing' | 'finance_categorization' | 'habit_analytics';
+  domain: 'task_priority' | 'sms_parsing' | 'finance_categorization' | 'habit_analytics' | 'behavioral_sequence';
   instruction: string;
   input: string;
   output: string;
@@ -188,6 +188,60 @@ export function formatAsJsonL(samples: AITrainingSample[]): string {
 }
 
 /**
+ * Transforms time-stamped user action logs into standard Machine Learning sequential training pairs.
+ * (Next-Action Prediction & Productivity Peak Timing)
+ */
+export function extractBehavioralSequenceSamples(logs: UserActionLog[]): AITrainingSample[] {
+  if (!logs || logs.length < 2) return [];
+
+  const samples: AITrainingSample[] = [];
+  const windowSize = 3;
+
+  for (let i = 0; i <= logs.length - windowSize - 1; i++) {
+    const historyWindow = logs.slice(i, i + windowSize);
+    const targetAction = logs[i + windowSize];
+
+    const inputSequence = historyWindow.map((h, idx) => ({
+      step: idx + 1,
+      action: h.actionType,
+      entity: h.entityType,
+      hour: h.context.hourOfDay,
+      day: h.context.dayOfWeekFa,
+    }));
+
+    const targetOutput = {
+      predicted_next_action: targetAction.actionType,
+      predicted_entity: targetAction.entityType,
+      target_hour: targetAction.context.hourOfDay,
+      time_delta_seconds: Math.round((targetAction.epochMs - historyWindow[historyWindow.length - 1].epochMs) / 1000),
+    };
+
+    samples.push({
+      id: `seq_${targetAction.id}`,
+      domain: 'behavioral_sequence',
+      instruction:
+        'با توجه به توالی اقدامات ثبت‌شده کاربر و زمان‌بندی زمانی آن‌ها، اقدام بعدی کاربر و زمان بهینه تعامل را به فرمت JSON پیش‌بینی کن.',
+      input: JSON.stringify(inputSequence, null, 2),
+      output: JSON.stringify(targetOutput, null, 2),
+      metadata: {
+        targetAction: targetAction.actionType,
+        targetHour: targetAction.context.hourOfDay,
+      },
+      timestamp: targetAction.timestamp,
+    });
+  }
+
+  return samples;
+}
+
+/**
+ * Exports behavioral time-series logs directly into ML-ready JSONL.
+ */
+export function formatBehavioralLogsAsJsonL(logs: UserActionLog[]): string {
+  return (logs || []).map(log => JSON.stringify(log)).join('\n');
+}
+
+/**
  * Triggers client-side download of the prepared AI Dataset file.
  */
 export function downloadAiDatasetFile(state: AppState, format: 'jsonl' | 'json' = 'jsonl') {
@@ -211,6 +265,22 @@ export function downloadAiDatasetFile(state: AppState, format: 'jsonl' | 'json' 
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Triggers client-side download of time-stamped behavioral action logs for Machine Learning.
+ */
+export function downloadBehavioralDatasetFile(logs: UserActionLog[]) {
+  const content = formatBehavioralLogsAsJsonL(logs);
+  const blob = new Blob([content], { type: 'application/x-jsonlines' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `hamtavar-behavioral-ml-logs-${new Date().toISOString().slice(0, 10)}.jsonl`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

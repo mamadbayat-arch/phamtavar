@@ -24,6 +24,86 @@ const ADS_FILE = path.resolve(DATA_DIR, 'ads.json');
 const USERS_FILE = path.resolve(DATA_DIR, 'users.json');
 const VERSION_FILE = path.resolve(DATA_DIR, 'version.json');
 const AI_DATASET_FILE = path.resolve(DATA_DIR, 'ai_dataset.jsonl');
+const BEHAVIORAL_LOGS_FILE = path.resolve(DATA_DIR, 'behavioral_logs.jsonl');
+
+// Seed some initial behavioral logs for Machine Learning if empty
+if (!fs.existsSync(BEHAVIORAL_LOGS_FILE)) {
+  const seedLogs = [
+    {
+      id: 'log_seed_1',
+      sessionId: 'sess_init',
+      actionType: 'task_create',
+      entityType: 'task',
+      entityId: 'task-1',
+      timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
+      epochMs: Date.now() - 3600000 * 5,
+      context: {
+        dayOfWeek: 0,
+        dayOfWeekFa: 'یکشنبه',
+        hourOfDay: 9,
+        minuteOfHour: 15,
+        isWeekend: false,
+        currentView: 'tasks',
+        payloadSummary: { quad: 'q1', priorityScore: 1.0 },
+      },
+    },
+    {
+      id: 'log_seed_2',
+      sessionId: 'sess_init',
+      actionType: 'task_toggle',
+      entityType: 'task',
+      entityId: 'task-1',
+      timestamp: new Date(Date.now() - 3600000 * 3).toISOString(),
+      epochMs: Date.now() - 3600000 * 3,
+      context: {
+        dayOfWeek: 0,
+        dayOfWeekFa: 'یکشنبه',
+        hourOfDay: 11,
+        minuteOfHour: 30,
+        isWeekend: false,
+        currentView: 'tasks',
+        payloadSummary: { done: true, completionLatencyMinutes: 135 },
+      },
+    },
+    {
+      id: 'log_seed_3',
+      sessionId: 'sess_init',
+      actionType: 'money_create',
+      entityType: 'money',
+      entityId: 'm-1',
+      timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+      epochMs: Date.now() - 3600000 * 2,
+      context: {
+        dayOfWeek: 0,
+        dayOfWeekFa: 'یکشنبه',
+        hourOfDay: 12,
+        minuteOfHour: 45,
+        isWeekend: false,
+        currentView: 'finance',
+        payloadSummary: { kind: 'expense', category: 'خوراک', amountTomans: 145000, amountLog10: 5.161 },
+      },
+    },
+    {
+      id: 'log_seed_4',
+      sessionId: 'sess_init',
+      actionType: 'habit_check',
+      entityType: 'habit',
+      entityId: 'habit-1',
+      timestamp: new Date(Date.now() - 1800000).toISOString(),
+      epochMs: Date.now() - 1800000,
+      context: {
+        dayOfWeek: 0,
+        dayOfWeekFa: 'یکشنبه',
+        hourOfDay: 14,
+        minuteOfHour: 0,
+        isWeekend: false,
+        currentView: 'habits',
+        payloadSummary: { streak: 5, targetMet: true },
+      },
+    },
+  ];
+  fs.writeFileSync(BEHAVIORAL_LOGS_FILE, seedLogs.map(l => JSON.stringify(l)).join('\n') + '\n', 'utf-8');
+}
 
 // Seed some initial high-quality AI training samples if empty
 if (!fs.existsSync(AI_DATASET_FILE)) {
@@ -415,6 +495,82 @@ app.post('/api/ai/sample', (req, res) => {
       success: true,
       message: `${items.length} نمونه آموزشی با موفقیت به دیتاست هوش مصنوعی اضافه شد.`,
     });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 5.1 Machine Learning Behavioral Time-Stamped Action Logs
+app.post('/api/ml/log-action', (req, res) => {
+  try {
+    const log = req.body;
+    if (!log || !log.actionType) {
+      return res.status(400).json({ success: false, message: 'لاگ رفتاری نامعتبر است.' });
+    }
+
+    const line = JSON.stringify(log) + '\n';
+    fs.appendFileSync(BEHAVIORAL_LOGS_FILE, line, 'utf-8');
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get('/api/ml/action-logs', (req, res) => {
+  try {
+    if (!fs.existsSync(BEHAVIORAL_LOGS_FILE)) {
+      return res.json({
+        success: true,
+        totalLogs: 0,
+        actionDistribution: {},
+        hourlyDistribution: {},
+        recentLogs: [],
+      });
+    }
+
+    const content = fs.readFileSync(BEHAVIORAL_LOGS_FILE, 'utf-8');
+    const lines = content.split('\n').filter(Boolean);
+
+    const actionDistribution: Record<string, number> = {};
+    const hourlyDistribution: Record<number, number> = {};
+    const parsedLogs: any[] = [];
+
+    lines.forEach(line => {
+      try {
+        const item = JSON.parse(line);
+        parsedLogs.push(item);
+        const action = item.actionType || 'unknown';
+        actionDistribution[action] = (actionDistribution[action] || 0) + 1;
+
+        const hour = item.context?.hourOfDay ?? new Date(item.timestamp).getHours();
+        if (Number.isFinite(hour)) {
+          hourlyDistribution[hour] = (hourlyDistribution[hour] || 0) + 1;
+        }
+      } catch (e) {}
+    });
+
+    return res.json({
+      success: true,
+      totalLogs: parsedLogs.length,
+      actionDistribution,
+      hourlyDistribution,
+      recentLogs: parsedLogs.slice(-50).reverse(), // 50 newest
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get('/api/ml/export-behavior-dataset', (req, res) => {
+  try {
+    if (!fs.existsSync(BEHAVIORAL_LOGS_FILE)) {
+      return res.status(404).send('لاگ رفتاری ثبت نشده است.');
+    }
+    res.setHeader('Content-Type', 'application/x-jsonlines');
+    res.setHeader('Content-Disposition', 'attachment; filename="hamtavar-behavioral-ml-dataset.jsonl"');
+    const stream = fs.createReadStream(BEHAVIORAL_LOGS_FILE);
+    stream.pipe(res);
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

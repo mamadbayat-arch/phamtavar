@@ -1,5 +1,12 @@
-import { AppState, Task, Goal, Habit, Installment, Cheque, Money } from '../types';
+import { AppState, Task, Goal, Habit, Installment, Cheque, Money, UserActionLog } from '../types';
 import { getTodayKey, moveDay } from './jalali';
+import {
+  enrichTaskWithMl,
+  enrichMoneyWithMl,
+  enrichHabitWithMl,
+  enrichGoalWithMl,
+  createActionLog,
+} from './behaviorLogger';
 
 declare global {
   interface Window {
@@ -195,13 +202,21 @@ export const getInitialSampleState = (): AppState => {
   ];
 
   return {
-    tasks: sampleTasks,
-    money: sampleMoney,
+    tasks: sampleTasks.map(t => enrichTaskWithMl(t, true)),
+    money: sampleMoney.map(m => enrichMoneyWithMl(m, true)),
     budget: 8000000,
-    goals: sampleGoals,
-    habits: sampleHabits,
-    installments: sampleInstallments,
-    cheques: sampleCheques,
+    goals: sampleGoals.map(g => enrichGoalWithMl(g, true)),
+    habits: sampleHabits.map(h => enrichHabitWithMl(h, true)),
+    installments: sampleInstallments.map(i => ({
+      ...i,
+      createdAt: new Date().toISOString(),
+      createdTimestamp: Date.now(),
+    })),
+    cheques: sampleCheques.map(c => ({
+      ...c,
+      createdAt: new Date().toISOString(),
+      createdTimestamp: Date.now(),
+    })),
     bankAccounts: [
       {
         id: 'bank-1',
@@ -211,6 +226,8 @@ export const getInitialSampleState = (): AppState => {
         currentBalance: 5200000,
         lastBankSmsBalance: 5200000,
         color: '#e11d48',
+        createdAt: new Date().toISOString(),
+        createdTimestamp: Date.now(),
       },
       {
         id: 'bank-2',
@@ -220,7 +237,12 @@ export const getInitialSampleState = (): AppState => {
         currentBalance: 2400000,
         lastBankSmsBalance: 2400000,
         color: '#0284c7',
+        createdAt: new Date().toISOString(),
+        createdTimestamp: Date.now(),
       },
+    ],
+    actionLogs: [
+      createActionLog('app_launch', 'system', undefined, { note: 'بارگذاری اولیه داده‌های نمونه با استانداردهای یادگیری ماشین' }),
     ],
   };
 };
@@ -234,7 +256,23 @@ export const getEmptyState = (): AppState => ({
   installments: [],
   cheques: [],
   bankAccounts: [],
+  actionLogs: [],
 });
+
+/**
+ * Ensures all entities in state comply with Machine Learning standards
+ * and time-stamped metadata requirements.
+ */
+export const ensureMlCompliance = (state: AppState): AppState => {
+  return {
+    ...state,
+    tasks: (state.tasks || []).map(t => enrichTaskWithMl(t)),
+    money: (state.money || []).map(m => enrichMoneyWithMl(m)),
+    habits: (state.habits || []).map(h => enrichHabitWithMl(h)),
+    goals: (state.goals || []).map(g => enrichGoalWithMl(g)),
+    actionLogs: Array.isArray(state.actionLogs) ? state.actionLogs : [],
+  };
+};
 
 export const validateBackup = (d: any): AppState => {
   if (!d || typeof d !== 'object') {
@@ -242,13 +280,15 @@ export const validateBackup = (d: any): AppState => {
   }
 
   // Normalize missing arrays
-  const tasks = Array.isArray(d.tasks) ? d.tasks : [];
-  const money = Array.isArray(d.money) ? d.money : [];
-  const goals = Array.isArray(d.goals) ? d.goals : [];
-  const habits = Array.isArray(d.habits) ? d.habits : [];
+  const tasks = Array.isArray(d.tasks) ? d.tasks.map((t: any) => enrichTaskWithMl(t)) : [];
+  const money = Array.isArray(d.money) ? d.money.map((m: any) => enrichMoneyWithMl(m)) : [];
+  const goals = Array.isArray(d.goals) ? d.goals.map((g: any) => enrichGoalWithMl(g)) : [];
+  const habits = Array.isArray(d.habits) ? d.habits.map((h: any) => enrichHabitWithMl(h)) : [];
   const installments = Array.isArray(d.installments) ? d.installments : [];
   const cheques = Array.isArray(d.cheques) ? d.cheques : [];
   const bankAccounts = Array.isArray(d.bankAccounts) ? d.bankAccounts : [];
+  const actionLogs = Array.isArray(d.actionLogs) ? d.actionLogs : [];
+  const userProfile = d.userProfile;
   const budget = Number.isFinite(d.budget) && d.budget >= 0 ? Number(d.budget) : 0;
 
   return {
@@ -260,6 +300,8 @@ export const validateBackup = (d: any): AppState => {
     installments,
     cheques,
     bankAccounts,
+    userProfile,
+    actionLogs,
   };
 };
 

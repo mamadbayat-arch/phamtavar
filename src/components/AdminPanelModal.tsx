@@ -18,9 +18,19 @@ import {
   Database,
   Cpu,
   FileText,
+  Activity,
+  Clock,
+  BarChart3,
 } from 'lucide-react';
 import { AdConfig, AppState, UserProfile } from '../types';
-import { extractAiTrainingSamples, downloadAiDatasetFile, formatAsJsonL, AITrainingSample } from '../utils/aiDataset';
+import {
+  extractAiTrainingSamples,
+  downloadAiDatasetFile,
+  formatAsJsonL,
+  downloadBehavioralDatasetFile,
+  formatBehavioralLogsAsJsonL,
+  AITrainingSample,
+} from '../utils/aiDataset';
 
 interface AdminPanelModalProps {
   isOpen: boolean;
