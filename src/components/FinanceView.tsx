@@ -348,28 +348,28 @@ export const FinanceView: React.FC<FinanceViewProps> = ({
         {tab === 'transactions' && (
           <button
             onClick={onOpenNewMoneyModal}
-            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all"
+            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>ثبت تراکنش</span>
+            <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="leading-none">ثبت تراکنش</span>
           </button>
         )}
         {tab === 'installments' && (
           <button
             onClick={onOpenNewInstallmentModal}
-            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all"
+            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>قسط جدید</span>
+            <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="leading-none">قسط جدید</span>
           </button>
         )}
         {tab === 'cheques' && (
           <button
             onClick={onOpenNewChequeModal}
-            className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all"
+            className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>چک جدید</span>
+            <Plus className="w-3.5 h-3.5 flex-shrink-0" />
+            <span className="leading-none">چک جدید</span>
           </button>
         )}
       </div>

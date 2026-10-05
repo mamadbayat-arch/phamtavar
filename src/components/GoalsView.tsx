@@ -44,10 +44,10 @@ export const GoalsView: React.FC<GoalsViewProps> = ({
 
         <button
           onClick={onOpenNewGoalModal}
-          className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all"
+          className="flex items-center justify-center gap-1.5 h-8 sm:h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
         >
-          <Plus className="w-4 h-4" />
-          <span>هدف جدید</span>
+          <Plus className="w-4 h-4 flex-shrink-0" />
+          <span className="leading-none">هدف جدید</span>
         </button>
       </div>
 

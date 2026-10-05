@@ -61,9 +61,9 @@ export const Navigation: React.FC<NavigationProps> = ({
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-slate-800/40'
               }`}
             >
-              <div className="relative">
+              <div className="relative flex items-center justify-center">
                 <Icon
-                  className={`w-5 h-5 transition-transform ${
+                  className={`w-5 h-5 flex-shrink-0 transition-transform ${
                     isActive ? 'scale-110' : ''
                   }`}
                   strokeWidth={isActive ? 2.5 : 2}

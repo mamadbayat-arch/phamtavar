@@ -317,40 +317,42 @@ export const TasksView: React.FC<TasksViewProps> = ({
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
             {/* View Mode Toggle */}
-            <div className="flex bg-slate-200 dark:bg-slate-800 p-0.5 rounded-lg text-slate-600 dark:text-slate-300">
+            <div className="flex items-center bg-slate-200/90 dark:bg-slate-800 p-0.5 rounded-xl text-slate-600 dark:text-slate-300">
               <button
                 onClick={() => setViewMode('quadrants')}
-                className={`p-1.5 rounded-md transition-all ${
+                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                   viewMode === 'quadrants'
                     ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                    : 'hover:text-slate-900'
+                    : 'hover:text-slate-900 dark:hover:text-white'
                 }`}
                 title="نمای دسته‌بندی ماتریس آیزنهاور"
+                aria-label="نمای دسته‌بندی ماتریس"
               >
-                <Grid2X2 className="w-4 h-4" />
+                <Grid2X2 className="w-4 h-4 flex-shrink-0" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-all ${
+                className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${
                   viewMode === 'list'
                     ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs'
-                    : 'hover:text-slate-900'
+                    : 'hover:text-slate-900 dark:hover:text-white'
                 }`}
                 title="نمای فهرست یکپارچه"
+                aria-label="نمای فهرست یکپارچه"
               >
-                <List className="w-4 h-4" />
+                <List className="w-4 h-4 flex-shrink-0" />
               </button>
             </div>
 
             {/* Quick Add Button */}
             <button
               onClick={() => onOpenNewTaskModal()}
-              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all"
+              className="flex items-center justify-center gap-1.5 h-8 px-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow transition-all leading-none"
             >
-              <Plus className="w-4 h-4" />
-              <span>کار جدید</span>
+              <Plus className="w-4 h-4 flex-shrink-0" />
+              <span className="leading-none">کار جدید</span>
             </button>
           </div>
         </div>
@@ -559,17 +561,17 @@ export const TasksView: React.FC<TasksViewProps> = ({
             <div className="flex items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
               <button
                 onClick={() => setPlannerWindowOffset(prev => prev - 15)}
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                className="w-7 h-7 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
                 title="۱۵ روز قبل"
               >
-                <ChevronRight className="w-3.5 h-3.5" />
+                <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" />
               </button>
               <button
                 onClick={() => setPlannerWindowOffset(prev => prev + 15)}
-                className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                className="w-7 h-7 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors border-r border-slate-200 dark:border-slate-700"
                 title="۱۵ روز بعد"
               >
-                <ChevronLeft className="w-3.5 h-3.5" />
+                <ChevronLeft className="w-3.5 h-3.5 flex-shrink-0" />
               </button>
             </div>
           </div>
