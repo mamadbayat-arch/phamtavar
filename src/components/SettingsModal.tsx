@@ -7,9 +7,7 @@ import {
   Upload,
   RotateCcw,
   Sparkles,
-  Smartphone,
   ShieldCheck,
-  Apple,
   LogOut,
   LogIn,
 } from 'lucide-react';
@@ -23,8 +21,8 @@ interface SettingsModalProps {
   onClose: () => void;
   onToggleTheme: () => void;
   onStateRestored: (newState: AppState) => void;
-  onOpenApkModal: () => void;
-  onOpenIosModal: () => void;
+  onOpenApkModal?: () => void;
+  onOpenIosModal?: () => void;
   onOpenAdminPanel: () => void;
   onCheckUpdate?: () => void;
   onLogout?: () => void;
@@ -122,52 +120,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Content */}
         <div className="p-4 overflow-y-auto space-y-4 text-xs text-slate-700 dark:text-slate-300">
-          {/* APK banner */}
-          <div className="p-3.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-3">
-            <div>
-              <p className="font-bold text-emerald-900 dark:text-emerald-300">
-                خروجی نرم‌افزار اندروید (APK)
-              </p>
-              <p className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">
-                فایل قابل نصب مستقیم روی تمامی گوشی‌های اندروید
-              </p>
-            </div>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenApkModal();
-              }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>دانلود APK</span>
-            </button>
-          </div>
-
-          {/* iOS / iPhone PWA Guide */}
-          <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900">
-                <Apple className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="font-bold text-slate-800 dark:text-slate-200">نسخه آیفون (iOS PWA)</p>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  نصب آسان و تمام‌صفحه از طریق مرورگر Safari
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                onClose();
-                onOpenIosModal();
-              }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 font-bold text-xs shadow-xs"
-            >
-              <span>راهنمای نصب</span>
-            </button>
-          </div>
-
           {/* Admin & Cloud & Ads */}
           <div className="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
